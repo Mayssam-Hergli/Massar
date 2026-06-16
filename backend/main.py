@@ -16,7 +16,7 @@ app = FastAPI(
     pour les entrepreneurs tunisiens.
     
     3 modules intégrés:
-    - Moteur de diagnostic adaptatif (6 stades de maturité)
+    - Moteur de diagnostic adaptapython -m uvicorn main:app --reloadtif (6 stades de maturité)
     - Scoring multi-dimensionnel explicable (5 dimensions)
     - RAG + Roadmap ancrée dans 41+ ressources tunisiennes réelles
     
