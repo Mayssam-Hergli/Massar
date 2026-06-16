@@ -125,6 +125,17 @@ ancré dans les outputs du diagnostic et de la base de connaissances.
 
 Trilingual FR/AR/Darija
 
+" description mtaa el architecture "
+React Frontend — single SPA in French/Arabic, calls the gateway with REST, renders the dashboard, Mon Parcours view, and scores.
+FastAPI Gateway — single entry point, routes /diagnose, /score, /roadmap to the right microservice, handles auth.
+3 Microservices — each is its own FastAPI app (can run as separate containers):
+
+MS1: Diagnostic — LLM-driven adaptive questionnaire + rule-based maturity classifier
+MS2: Scoring — weighted formula engine for the 5 scores + LLM for natural-language justification
+MS3: RAG — pgvector retrieval over the knowledge base + roadmap generation
+
+PostgreSQL (shared DB) — the project_profiles table is your shared state JSON: every microservice reads from it and writes to it, so they stay aware of each other's outputs without direct coupling. This is the key design decision to highlight in your README.
+Cross-module triggers — the arrows between microservices show the integration: a diagnostic gap triggers MS3 retrieval, a low sub-score triggers MS3 roadmap action, MS3 can query MS1 for missing profile fields.
 ---
 
 ## 🛠️ Stack Technique
