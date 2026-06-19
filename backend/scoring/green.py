@@ -142,5 +142,4 @@ def compute_green_score(answers: dict[str, str]) -> dict:
         "undp_raw_total": undp_raw_total,
         "undp_classification": _classify(undp_raw_total),
         "pillars": pillar_results,
-        "anomaly_flags": [],
     }
