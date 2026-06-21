@@ -1,71 +1,74 @@
-# Sustainability & Compliance Assessment Platform — Backend Services
+# Massar — MS1 (File Parser + Questionnaire Intake)
 
-Backend services for an enterprise sustainability / compliance assessment platform.
-This repository contains **my** part of a multi-agent system: the document ingestion
-pipeline, the diagnostic engine, and the scoring agent that sits between two
-teammate-owned agents. All services are async, typed (Pydantic), and integrate through
-a shared **PostgreSQL + pgvector** database rather than by calling each other directly.
+Backend services for the **Massar** startup / project-viability assessment platform.
+This repository contains **my** part of a multi-agent system — **MS1**: ingest the
+founder's documents, pre-fill and verify their questionnaire, and write the
+`diagnostic_answers` contract that the teammate-owned **MS2 scoring agent** reads. All
+services are async, typed (Pydantic), and integrate through a shared **PostgreSQL**
+database rather than by calling each other directly.
 
 ---
 
-## What this delivers
+## What MS1 delivers
 
-Three production-grade services plus a shared platform layer:
+| Capability | Module | What it does |
+|---|---|---|
+| **File Parser** | `services/file_parser` | Reads uploaded documents (PDF / DOCX / CSV / XLSX) and turns them into plain text + typed fragments |
+| **Document pre-fill & verify** ⭐ | `services/ms1_diagnostic/prefill.py` | Maps a pitch deck / business plan onto the 31 questionnaire keys → **suggests** answers and **cross-checks** the founder's submission (match / mismatch / fill) |
+| **Questionnaire intake** ⭐ | `services/ms1_diagnostic/answer_schema.py`, `intake.py` | Validates the venture questionnaire against the 31-key contract and writes the flat `diagnostic_answers` object for MS2 |
+| **Common platform** | `services/common` | Cross-cutting: config, structured observability, resilience, health, typed errors |
 
-| Service | What it does |
-|---|---|
-| **File Parser** (`services/file_parser`) | Ingests uploaded documents (PDF / DOCX / CSV / XLSX) → extracts and normalizes them into typed, embedded **signals** (the documentary "reality") |
-| **MS1 — Diagnostic Engine** (`services/ms1_diagnostic`) | Runs a branching questionnaire (perception), compares it against the parsed signals (reality), ranks blockers, and classifies maturity → writes `diagnostic_answers` |
-| **MS2 — Scoring Agent** (`services/scoring_agent`) | Reads `diagnostic_answers`, runs 5 scoring tools, writes 5 score objects → `scores` |
-| **Common platform** (`services/common`) | Cross-cutting concerns: config, structured observability, resilience, health, typed errors |
+⭐ = the features that wire the PDF and the questionnaire together.
 
-### Where this fits in the team workflow
+### Where MS1 fits in the team workflow
 
-```
-MS1 Agent (teammate)     writes  diagnostic_answers ─┐
-                                                     ▼
-MS2 Scoring Agent (mine) reads   diagnostic_answers
-                         writes  scores (5 objects)  ─┐
-                                                      ▼
-MS3 Agent (teammate)     reads   scores  → decides KB retrieval
+```text
+Founder uploads pitch deck / business plan (PDF/DOCX/CSV/XLSX)
+        │   File Parser  +  DocumentPrefillService
+        ▼
+Pre-filled + verified answers  ──►  founder confirms / edits
+        │   IntakeService  (validate → build)
+        ▼
+diagnostic_answers  (31 flat venture keys, JSONB)
+        on project_profiles
+        │
+        ▼
+MS2 Scoring Agent (teammate)  reads diagnostic_answers → writes scores
+        │
+        ▼
+MS3 Agent (teammate)  reads scores → decides KB retrieval
 ```
 
 No service calls another directly — each stage reads what the previous wrote to the
-shared `project_profiles` table. The exact column ownership and JSON shapes are pinned
-down in **[INTEGRATION.md](INTEGRATION.md)** (the merge contract).
+shared `project_profiles` table. The PDF step is **assistive**: it pre-fills and flags,
+but MS1 only ever writes the answers the founder finally confirms, so the MS2 contract
+stays exactly the 31 keys.
 
 ---
 
-## Architecture
+## The 31-key `diagnostic_answers` contract
 
-```
-                ┌─────────────────────────────────────────────────────────┐
-   documents ──▶│ File Parser:  extract → normalize → embed → persist      │
-  (PDF/DOCX/    │   pdfplumber / python-docx / pandas  →  ExtractedSignal  │
-   CSV/XLSX)    └───────────────┬─────────────────────────────────────────┘
-                                │ document_signals (pgvector)
-                                ▼
-   questionnaire ──▶ ┌──────────────────────────────────────────────────┐
-   answers           │ MS1 Diagnostic Engine                            │
-                     │   QuestionGraph (DAG) → GapDetector              │
-                     │   → BlockerRanker → RuleEngine + structured LLM  │
-                     └───────────────┬──────────────────────────────────┘
-                                     │ diagnostic_answers (JSONB)
-                                     ▼
-                     ┌──────────────────────────────────────────────────┐
-                     │ MS2 Scoring Agent                                │
-                     │   5 tools → justifier (LLM) → 5 score objects   │
-                     └───────────────┬──────────────────────────────────┘
-                                     │ scores (JSONB)  →  consumed by MS3
-                                     ▼
-                            project_profiles  (PostgreSQL + pgvector)
-```
+`services/ms1_diagnostic/answer_schema.py` is the **single source of truth** for what
+MS1 writes (and MS2 reads). Keys are grouped by the scorer's modules; every key is
+always present (optional keys are defaulted):
+
+| Group | Keys |
+|---|---|
+| **market** (6) | `market_size`, `customer_interviews`, `has_loi`, `has_paying_customers`, `revenue_model_documented`, `revenue_model_type` |
+| **commercial** (4) | `value_proposition_clarity`, `product_maturity`, `pricing_strategy`, `offer_need_alignment` |
+| **innovation** (4) | `local_novelty`, `technology_intensity`, `barrier_to_entry`, `has_ip_protection`* |
+| **scalability** (3) | `replicability`, `manual_dependency`, `geographic_potential` |
+| **green** (12) | `energy_source`, `energy_consumption`, `transport_activity`, `water_volume`, `water_origin`, `wastewater_treatment`, `zone_type`, `surface_impacted`, `ecosystem_disruption`, `raw_material_consumption`, `waste_volume`, `recycling_strategy` |
+| **anomaly** (2) | `has_pitch_deck`*, `funding_needed`* |
+
+`*` optional — defaults applied (`has_ip_protection="none"`, `revenue_model_type="undefined"`,
+`has_pitch_deck=false`, `funding_needed=""`). Schema version: `ms1.answers.v1`.
 
 ---
 
 ## Repository layout
 
-```
+```text
 services/
 ├── common/                 # Cross-cutting platform layer
 │   ├── config.py           #   env-driven Settings tree (APP_* vars)
@@ -74,110 +77,103 @@ services/
 │   ├── resilience.py       #   retry, circuit breaker, timeout, concurrency gate
 │   └── health.py           #   liveness / readiness probes
 │
-├── file_parser/            # Document ingestion → typed, embedded signals
+├── file_parser/            # Document ingestion (PDF/DOCX/CSV/XLSX → text/fragments)
 │   ├── extractors.py       #   async pdfplumber / python-docx / pandas extractors
-│   ├── normalizer.py       #   signal taxonomy + value parsing (shared contract)
-│   └── core.py             #   pipeline orchestration + pgvector persistence
+│   ├── normalizer.py       #   fragment → typed signal helper
+│   └── core.py             #   pipeline orchestration + persistence
 │
-├── ms1_diagnostic/         # Perception-vs-reality diagnostic
-│   ├── questions.py        #   branching DAG questionnaire + answer validation
-│   ├── gap_detector.py     #   perception vs. evidenced reality per domain
-│   ├── blocker_ranker.py   #   multi-criteria priority blocker matrix
-│   └── engine.py           #   maturity classifier (RuleEngine + structured LLM)
+├── ms1_diagnostic/         # MS1 — the active venture path
+│   ├── answer_schema.py    # ⭐ the 31-key contract: enums, validation, builder
+│   ├── intake.py           # ⭐ IntakeService (validate→build→write) + AnswerRepository
+│   ├── prefill.py          # ⭐ DocumentPrefillService: doc → suggest & verify answers
+│   │
+│   ├── questions.py        #   (legacy ESG) branching DAG questionnaire
+│   ├── gap_detector.py     #   (legacy ESG) perception-vs-reality analytics
+│   ├── blocker_ranker.py   #   (legacy ESG) priority blocker matrix
+│   └── engine.py           #   (legacy ESG) maturity classifier
 │
-└── scoring_agent/          # MS2: reads diagnostic, writes 5 scores
-    ├── contracts.py        #   THE merge interface (read view + write schema)
-    ├── tools.py            #   5 scoring tools (4 pillars + overall)
-    ├── justifier.py        #   LLM justification writer (resilient, optional)
-    ├── repository.py       #   merge-safe, additive, column-scoped persistence
-    └── agent.py            #   ScoringAgent orchestration
+└── scoring_agent/          # (reference) MS2 implementation — teammate owns the live one
 
-INTEGRATION.md              # Shared-DB merge contract (column ownership + schemas)
+demo_prefill.py             # pitch deck → suggested + verified answers
+demo_intake.py              # confirmed answers → the diagnostic_answers MS2 reads
+demo.py                     # (legacy ESG) full parse → diagnose → score pipeline
+tests/                      # pytest suite (13 tests)
+INTEGRATION.md              # shared-DB merge notes
 requirements.txt
 ```
 
+> **Active vs. legacy:** the Massar venture flow uses **`answer_schema.py` + `intake.py`
+> + `prefill.py`**. The ESG diagnostic modules (`questions/gap_detector/blocker_ranker/
+> engine`) and the reference `scoring_agent` are an earlier, richer analytics model
+> retained in the tree (exercised by `demo.py` / `tests/test_end_to_end.py`).
+
 ---
 
-## The services in detail
+## Features in detail
 
 ### 1. File Parser (`services/file_parser`)
 
-Turns messy documents into clean, typed evidence.
+Reads a document off the event loop and yields its text.
 
 - **Extractors** (`extractors.py`) — one per file type (`pdfplumber`, `python-docx`,
-  `pandas`), all behind a uniform async `extract()` that offloads the blocking
-  libraries to threads. An `ExtractorRegistry` resolves by content-type or extension.
-- **Normalizer** (`normalizer.py`) — classifies each fragment into a domain
-  (`environmental / social / governance / compliance / …`) and type
-  (`metric / target / policy / certification / statement / date`), parses numeric
-  values **only when attached to a recognized unit** (so years/ISO codes don't become
-  fake metrics), and deduplicates by content hash. Produces `ExtractedSignal` objects —
-  **the shared contract** that MS1 consumes.
-- **Pipeline** (`core.py`) — `extract → normalize → embed → persist`. Signals get
-  1536-dim embeddings (pluggable `Embedder`, cached, with a deterministic offline
-  default) and are written to the pgvector `document_signals` table.
+  `pandas`), all behind a uniform async `extract()` that offloads the blocking libraries
+  to threads. An `ExtractorRegistry` resolves by content-type or extension.
+- Enterprise hardening: file-size + content-type validation, content-hash idempotency,
+  bounded batch concurrency, resilient persistence, correlation-scoped logging/metrics.
 
-Enterprise hardening: file-size + content-type validation, content-hash idempotency,
-bounded batch concurrency, embedding cache, resilient persistence, and
-correlation-scoped logging/metrics.
+### 2. Document pre-fill & verify ⭐ (`prefill.py`)
 
-### 2. MS1 — Diagnostic Engine (`services/ms1_diagnostic`)
+Turns an uploaded pitch deck / business plan into questionnaire help.
 
-Compares what an organisation *claims* against what its documents *prove*.
+- **`DocumentPrefillService.suggest_from_document(...)`** — parses the file (via the File
+  Parser) and runs a rule-based extractor that maps phrases to the venture keys, each
+  suggestion carrying a **confidence** and an **evidence snippet** (e.g. *"raising a
+  **Series A** round"* → `funding_needed="series_a"`). Only values valid for a key's enum
+  are kept, so suggestions can never break the contract. An optional structured-LLM
+  extractor can be injected for messy decks.
+- **`verify(answers, suggestions)`** — cross-checks the founder's submission against the
+  document and labels each field **match / mismatch / prefill** (mismatches are surfaced
+  for the founder to confirm).
+- **`prefilled_answers(...)`** — fills confident blanks so the form starts mostly complete.
 
-- **`questions.py`** — a DAG of branching questions (answering "CSRD in scope?" = yes
-  unlocks ESRS follow-ups). Cycle detection at build time; traversal computes active /
-  next / coverage; `validate_answers` rejects malformed input.
-- **`gap_detector.py`** — per domain, computes **perceived** maturity (from answers)
-  vs. **evidenced** maturity (from signals) → flags **overclaims** (confident but
-  unsupported) and **hidden strengths** (under-reported).
-- **`blocker_ranker.py`** — a transparent weighted decision matrix
-  (impact / regulatory exposure / urgency / effort / dependency) turning gaps into a
-  ranked, auditable blocker list.
-- **`engine.py`** — a deterministic `RuleEngine` produces the authoritative maturity
-  level (1–5), and a structured **Claude** call (`claude-opus-4-8`) adds an enriching
-  second opinion + divergence check. The result is serialized to the
-  `diagnostic_answers` JSONB contract on `project_profiles`, with an append-only
-  history table for audit.
+### 3. Questionnaire intake ⭐ (`answer_schema.py`, `intake.py`)
 
-### 3. MS2 — Scoring Agent (`services/scoring_agent`)
+The contract producer.
 
-Sits between teammate-owned MS1 and MS3.
-
-- **`contracts.py`** — the merge interface: a **tolerant** `DiagnosticAnswersView`
-  reader over MS1's payload, and the `ScoreObject` / `ScoreSet` write schema for MS3.
-- **`tools.py`** — the **5 scoring tools**: four ESG/compliance pillar scorers
-  (reality-anchored, penalized for overclaims, weighted by coverage) and one composite
-  `overall` scorer with a systemic-risk penalty for high-priority blockers. Scores are
-  deterministic and auditable.
-- **`justifier.py`** — Claude writes audit-quality justifications for the numbers in one
-  structured call; falls back to deterministic text if the LLM is unavailable.
-- **`repository.py`** — **merge-safe**: additive-only schema, `UPDATE`-only writes that
-  touch *only* the `scores*` columns, ordering enforcement
-  (`DiagnosticNotReadyError` if MS1 hasn't run), and an audit-history table.
+- **`answer_schema.py`** — the authoritative 31-key spec with enum values, plus
+  `validate_answers()` (rejects unknown keys, bad enums, out-of-range `has_loi`) and
+  `build_diagnostic_answers()` (coerces types, applies optional-key defaults, guarantees
+  every key is present).
+- **`intake.py`** — `IntakeService.submit(...)` runs validate → build → persist;
+  `AnswerRepository` writes the flat object to `project_profiles.diagnostic_answers` with
+  an **additive, column-scoped** upsert (never touches other teams' columns) and an
+  append-only `project_answers_history` audit trail. Mirrors the team's
+  `PATCH /profiles/{id}/answers` endpoint shape.
 
 ### 4. Common platform (`services/common`)
 
 - **`config.py`** — one immutable, env-driven `Settings` tree (`APP_*`).
-- **`observability.py`** — JSON structured logging, a `correlation_id` that flows
-  through async chains into every log line, and a pluggable `MetricsSink`
-  (in-memory default; swap for Prometheus/OTel without touching call sites).
+- **`observability.py`** — JSON structured logging, a `correlation_id` that flows through
+  async chains into every log line, and a pluggable `MetricsSink` (in-memory default;
+  swap for Prometheus/OTel without touching call sites).
 - **`resilience.py`** — `retry`/`retry_async`, `AsyncCircuitBreaker`, `with_timeout`,
   `BoundedGate`.
 - **`health.py`** — liveness + DB-backed readiness probes.
-- **`exceptions.py`** — a rooted `PlatformError` hierarchy mapping cleanly to HTTP codes.
+- **`exceptions.py`** — a rooted `PlatformError` hierarchy mapping cleanly to HTTP codes
+  (e.g. `AnswerValidationError` → 4xx, `PersistenceError` → 5xx).
 
 ---
 
-## Data contracts (shared `project_profiles` table)
+## Demos & tests (run in the terminal)
 
-| Column | Owner | Written by |
-|---|---|---|
-| `diagnostic_answers` (JSONB) | MS1 | MS1 Diagnostic Engine |
-| `scores` (JSONB) | MS2 (mine) | MS2 Scoring Agent |
-| `document_signals` (separate pgvector table) | File Parser | File Parser |
+```bash
+python demo_prefill.py     # pitch deck → 19 suggested answers + mismatch flags
+python demo_intake.py      # confirmed answers → the 31-key diagnostic_answers JSON
+python demo.py             # (legacy ESG) full parse → diagnose → score pipeline
+python -m pytest -q        # 13 passed
+```
 
-Full field-level schemas and merge rules: see **[INTEGRATION.md](INTEGRATION.md)**.
+All demos run **with no database and no API key** (in-memory pool + deterministic logic).
 
 ---
 
@@ -187,87 +183,56 @@ Full field-level schemas and merge rules: see **[INTEGRATION.md](INTEGRATION.md)
 python -m pip install -r requirements.txt
 ```
 
-Runtime dependencies: `pydantic`, `pdfplumber`, `python-docx`, `pandas`, `openpyxl`,
-`asyncpg`, `anthropic`. The `anthropic` and `asyncpg` packages are **lazy-loaded** —
-the in-memory logic (parsing, diagnosis, scoring) runs and is testable without them.
-
-Set your Anthropic key to enable the structured-LLM layers (both degrade gracefully if
-absent):
-
-```bash
-export ANTHROPIC_API_KEY=sk-ant-...
-```
+Runtime deps: `pydantic`, `pdfplumber`, `python-docx`, `pandas`, `openpyxl`, `asyncpg`,
+`anthropic`. `anthropic` and `asyncpg` are **lazy-loaded** — the intake, pre-fill, and
+parsing logic run and are testable without them. Set `ANTHROPIC_API_KEY` only to enable
+the optional LLM extractor.
 
 ---
 
 ## Quickstart
 
-### Parse a document into signals
+### Pre-fill & verify from a document
 
 ```python
-import asyncio, uuid
-from services.file_parser import FileParserService, ParseRequest, SignalRepository
+from services.ms1_diagnostic.prefill import DocumentPrefillService
 
-async def main(pool):
-    repo = SignalRepository(pool)
-    await repo.ensure_schema()
-    parser = FileParserService(repository=repo)
-    doc = await parser.parse(ParseRequest(
-        project_id=uuid.uuid4(),
-        filename="sustainability_report.pdf",
-        data=open("report.pdf", "rb").read(),
-        content_type="application/pdf",
-    ))
-    print(len(doc.signals), "signals extracted")
+svc = DocumentPrefillService()
+suggestions = await svc.suggest_from_document(
+    data=open("deck.pdf", "rb").read(), filename="deck.pdf", content_type="application/pdf",
+)
+verifications = svc.verify(answers=founder_answers, suggestions=suggestions)
+# surface mismatches; svc.prefilled_answers(...) fills confident blanks
 ```
 
-### Run the diagnostic (MS1)
+### Submit the questionnaire (writes `diagnostic_answers` for MS2)
 
 ```python
-from services.ms1_diagnostic import DiagnosticEngine, ProjectProfileRepository, LLMMaturityClassifier
+from services.ms1_diagnostic.intake import IntakeService, AnswerRepository
 
-engine = DiagnosticEngine(
-    repository=ProjectProfileRepository(pool),
-    llm_classifier=LLMMaturityClassifier(),   # optional; omit for rule-engine only
-)
-result = await engine.diagnose(
-    project_id=pid,
-    answers={"c_csrd_scope": True, "e_emissions_tracking": True, ...},
-    signals=doc.signals,
-    tenant_id=tenant_id,
-)
-print(result.overall.maturity_level, result.overall.maturity_label)
-```
-
-### Score a project (MS2)
-
-```python
-from services.scoring_agent import ScoringAgent, ScoreRepository, JustificationWriter
-
-repo = ScoreRepository(pool)
-await repo.ensure_schema()                      # additive; safe alongside MS1's schema
-agent = ScoringAgent(repository=repo, justifier=JustificationWriter())
-score_set = await agent.score_project(project_id=pid, tenant_id=tenant_id)
-print(score_set.overall_score, score_set.overall_band)   # consumed by MS3
+repo = AnswerRepository(pool)
+await repo.ensure_schema()                          # additive; safe alongside teammates'
+service = IntakeService(repository=repo)
+diagnostic_answers = await service.submit(
+    project_id=pid, tenant_id=tid, answers=confirmed_answers,
+)   # validated, all 31 keys present, written to project_profiles.diagnostic_answers
 ```
 
 ---
 
 ## Configuration
 
-All tunables are environment variables under the `APP_` prefix (see
-`services/common/config.py`). Common ones:
+Environment variables under the `APP_` prefix (see `services/common/config.py`):
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `APP_DATABASE_DSN` | – | PostgreSQL connection string |
+| `APP_DATABASE_DSN` | – | PostgreSQL connection string (asyncpg) |
 | `APP_PARSER_MAX_FILE_BYTES` | `26214400` | Upload size limit (25 MiB) |
 | `APP_PARSER_MAX_CONCURRENCY` | `8` | Parallel document parses |
-| `APP_LLM_ENABLED` | `true` | Toggle the structured-LLM layers |
+| `APP_LLM_ENABLED` | `true` | Toggle the optional LLM extractor |
 | `APP_LLM_MODEL` | `claude-opus-4-8` | Model id |
 | `APP_LLM_TIMEOUT_SECONDS` | `45` | Per-LLM-call timeout |
 | `APP_CIRCUIT_FAILURE_THRESHOLD` | `5` | Failures before a circuit opens |
-| `APP_SCORING_OVERCLAIM_PENALTY` | `0.4` | How hard overclaims lower a pillar score |
 | `APP_LOG_JSON` | `true` | JSON vs. human logs |
 
 ---
@@ -275,18 +240,20 @@ All tunables are environment variables under the `APP_` prefix (see
 ## Operational notes
 
 - Call `configure_logging(...)` once at process startup.
-- Call each repository's `ensure_schema()` once at startup. The Scoring Agent's
-  migration is **additive** and composes safely with MS1's, in any order.
-- Health probes: `HealthCheck(pool=pool).readiness()` for Kubernetes/load balancers.
-- Every service is tenant-aware (`tenant_id`) and keeps an append-only history table,
-  for multi-tenant isolation and regulated-disclosure audit.
+- Call `AnswerRepository.ensure_schema()` once at startup — it's **additive**
+  (`ADD COLUMN IF NOT EXISTS`) and composes safely with whatever owns the rest of
+  `project_profiles`, in any order.
+- Health probes: `HealthCheck(pool=pool).readiness()` for Kubernetes / load balancers.
+- Tenant-aware (`tenant_id`) with an append-only history table for audit.
 
 ---
 
 ## Status
 
-All three services and the platform layer compile and pass end-to-end smoke tests
-(document parsing, branching diagnostic, perception/reality gap detection, blocker
-ranking, five-band scoring, merge-safe persistence, retry/circuit-breaker/validation,
-JSON logging with correlation IDs). The LLM layers are optional and degrade to the
-deterministic engines when the API is unavailable.
+MS1 is working end to end: **document → pre-fill/verify → confirmed answers →
+`diagnostic_answers` (31 keys)**, proven by `demo_prefill.py`, `demo_intake.py`, and a
+**13-test** suite. The optional LLM layers degrade gracefully when no API key is set.
+
+**Open (teammate / DB-owner items):** live Supabase DSN + `project_profiles.id` type;
+a thin `PATCH /profiles/{id}/answers` HTTP route over `IntakeService`; confirmation of a
+possible 3rd anomaly key.
