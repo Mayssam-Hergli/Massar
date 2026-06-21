@@ -24,6 +24,13 @@ from services.ms1_diagnostic.blocker_ranker import (
     CriteriaWeights,
 )
 from services.ms1_diagnostic.intake import AnswerRepository, IntakeService
+from services.ms1_diagnostic.prefill import (
+    AnswerSuggestion,
+    DocumentPrefillService,
+    RuleBasedExtractor,
+    Verification,
+    extract_document_text,
+)
 from services.ms1_diagnostic.engine import (
     DiagnosticAnswers,
     DiagnosticEngine,
@@ -66,6 +73,11 @@ __all__ = [
     "validate_answers",
     "AnswerRepository",
     "IntakeService",
+    "AnswerSuggestion",
+    "DocumentPrefillService",
+    "RuleBasedExtractor",
+    "Verification",
+    "extract_document_text",
     "Blocker",
     "BlockerCategory",
     "BlockerRanker",
