@@ -18,7 +18,7 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "ains.db")
 
 def init_db(path: str = DATABASE_PATH) -> None:
     """Create all tables if they don't exist. Called once at app startup."""
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=False)
     try:
         conn.executescript("""
             PRAGMA foreign_keys = ON;
@@ -67,13 +67,19 @@ def init_db(path: str = DATABASE_PATH) -> None:
             conn.commit()
         except Exception:
             pass  # column already exists
+        # Migration: add roadmap column (MS3 — cached generated roadmap JSON)
+        try:
+            conn.execute("ALTER TABLE project_profiles ADD COLUMN roadmap TEXT")
+            conn.commit()
+        except Exception:
+            pass  # column already exists
     finally:
         conn.close()
 
 
 def get_db() -> Generator[sqlite3.Connection, None, None]:
     """FastAPI dependency that yields an open SQLite connection per request."""
-    conn = sqlite3.connect(DATABASE_PATH)
+    conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:

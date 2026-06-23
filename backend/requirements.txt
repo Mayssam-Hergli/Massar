@@ -18,8 +18,15 @@ slowapi
 openai                # Groq uses openai-compatible API
 anthropic             # optional: set LLM_PROVIDER=anthropic
 
-# RAG (MS3)
-chromadb
+# RAG (MS3) — roadmap LLM calls go through rag/llm_client.py (groq by
+# default, reusing GROQ_API_KEY already configured for MS2). google-genai
+# is only needed if RAG_LLM_PROVIDER=gemini is set instead.
+google-genai
+# chromadb was listed here previously but is unused — MS3's real retrieval
+# design targets Supabase pgvector (not configured in this repo); the
+# integrated retrieval (rag/retrieval.py) is a lexical fallback over the
+# same 36 real resources, no vector DB required. Remove chromadb unless
+# something else in the repo depends on it.
 
 # Dev / testing
 # (no extra test packages needed — all tests use stdlib unittest + pytest-style assertions)

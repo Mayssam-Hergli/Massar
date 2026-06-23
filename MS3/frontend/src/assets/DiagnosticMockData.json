@@ -1,0 +1,27 @@
+{
+  "project_metadata": {
+    "sector": "Tech / Digital Health",
+    "current_stage": "Market Validation",
+    "legal_form": "Not yet incorporated"
+  },
+  "identified_gaps": [
+    {
+      "gap_id": "gap_001",
+      "domain": "legal",
+      "description": "Lack of legal structure to contract with local clinics.",
+      "severity": "CRITICAL"
+    },
+    {
+      "gap_id": "gap_002",
+      "domain": "financial",
+      "description": "Missing non-dilutive seed capital to build out the high-fidelity MVP.",
+      "severity": "HIGH"
+    },
+    {
+      "gap_id": "gap_003",
+      "domain": "technical",
+      "description": "Intellectual property and application branding unprotected in the Tunisian market.",
+      "severity": "MEDIUM"
+    }
+  ]
+}

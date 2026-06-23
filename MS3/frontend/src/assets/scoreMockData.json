@@ -1,0 +1,13 @@
+{
+  "maturity_scores": {
+    "overall_score": 42.5,
+    "financial_readiness": 20.0,
+    "legal_compliance": 15.0,
+    "technical_execution": 65.0,
+    "market_fit": 55.0
+  },
+  "flags": {
+    "is_eligible_for_startup_act": true,
+    "requires_immediate_capital_injection": true
+  }
+}

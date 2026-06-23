@@ -13,6 +13,7 @@ from api.auth import router as auth_router
 from api.profiles import router as profiles_router
 from api.scoring import router as scoring_router
 from api.diagnostic import router as diagnostic_router
+from api.roadmap import router as roadmap_router
 
 # ─── App Instance ────────────────────────────────────────────
 app = FastAPI(
@@ -57,6 +58,7 @@ app.include_router(auth_router)
 app.include_router(profiles_router)
 app.include_router(scoring_router)
 app.include_router(diagnostic_router)   # MS1 — diagnostic intake (integrated)
+app.include_router(roadmap_router)      # MS3 — RAG & roadmap (integrated)
 
 # ─── Health ───────────────────────────────────────────────────
 @app.get("/", tags=["Health"])
@@ -77,20 +79,9 @@ def health():
 # ─── Diagnostic (MS1) ── now served by api/diagnostic.py (mounted above) ──
 #   GET  /diagnostic/schema · POST /diagnostic/answers/{id}
 
-# ─── RAG + Roadmap Routes (stub — owned by MS3) ──────────────
-
-@app.post("/roadmap/generate/{profile_id}", tags=["RAG & Roadmap"])
-def generate_roadmap(profile_id: str):
-    """
-    Génère une roadmap personnalisée ancrée dans la base de connaissances.
-    Chaque recommandation cite sa source. Aucune hallucination possible.
-    Horizons: immédiat / court terme / moyen terme.
-    """
-    return {"message": f"roadmap for {profile_id} — coming Day 3"}
-
-@app.get("/roadmap/{profile_id}", tags=["RAG & Roadmap"])
-def get_roadmap(profile_id: str):
-    return {"message": f"get roadmap for {profile_id} — coming Day 3"}
+# ─── RAG + Roadmap (MS3) ── now served by api/roadmap.py (mounted above) ──
+#   POST /roadmap/generate/{id} · GET /roadmap/{id} · POST /roadmap/chat
+#   POST /roadmap/evaluate-progress
 
 # ─── Assistant Routes (stub) ──────────────────────────────────
 

@@ -1,0 +1,28 @@
+{
+  "retrieved_chunks": [
+    {
+      "kb_id": "kb_0002",
+      "title": "Label Startup Act — critères d'éligibilité",
+      "type": "administrative",
+      "description": "Cadre juridique tunisien (Loi N°2018-20) offrant 20 mesures d'avantages aux startups labellisées : compte spécial en devises, avantages fiscaux.",
+      "stage_relevance": ["Structuration", "Market Validation"],
+      "domain": ["legal", "financial"]
+    },
+    {
+      "kb_id": "kb_0007",
+      "title": "Flywheel — Bourse AIR (Acceleration Instrument for Startups)",
+      "type": "financing",
+      "description": "Subvention financière de pré-amorçage d'environ 30 000 DT pour soutenir la transition d'une preuve de concept (POC) vers un produit minimum viable (MVP).",
+      "stage_relevance": ["Ideation", "Market Validation", "Fundraising"],
+      "domain": ["financial", "innovation"]
+    },
+    {
+      "kb_id": "kb_0023",
+      "title": "INNORPI — Enregistrement et dépôt légal de marque de commerce",
+      "type": "administrative",
+      "description": "Démarche juridique permettant d'assurer la protection exclusive de la propriété industrielle en Tunisie pour une période de 10 ans.",
+      "stage_relevance": ["Structuration", "Launch Planning"],
+      "domain": ["legal"]
+    }
+  ]
+}

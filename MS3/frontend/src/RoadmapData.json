@@ -1,0 +1,150 @@
+{
+  "project_id": "proj_4471",
+  "generated_at": "2026-06-19T10:00:00Z",
+  "maturity_stage": "Structuration",
+  "steps": [
+    {
+      "id": "step_1",
+      "order": 1,
+      "title": "Valider le modèle économique",
+      "title_en_short": "Validate business model",
+      "time_horizon": "immediate",
+      "icon": "clipboard-check",
+      "addresses": {
+        "type": "gap",
+        "ref_id": "gap_validation_evidence",
+        "label": "Auto-évaluation \"prêt au financement\" sans preuve de validation client"
+      },
+      "explanation": "Le diagnostic a détecté un écart entre votre auto-évaluation et l'analyse du système : vous vous situez en réalité au stade Structuration, pas Financement. Cette étape comble l'écart de preuve de validation avant toute démarche de financement, car les bailleurs de fonds exigent systématiquement des preuves de traction client.",
+      "resources": [
+        {
+          "source_id": "kb_0042",
+          "title": "Guide de validation marché — BFPME",
+          "type": "guide",
+          "link": "https://example.org/kb/0042",
+          "downloadable": true
+        },
+        {
+          "source_id": "kb_0017",
+          "title": "Méthodologie Lean Canvas — APII",
+          "type": "guide",
+          "link": "https://example.org/kb/0017",
+          "downloadable": true
+        }
+      ]
+    },
+    {
+      "id": "step_2",
+      "order": 2,
+      "title": "Déposer le dossier BFPME",
+      "title_en_short": "File BFPME application",
+      "time_horizon": "immediate",
+      "icon": "building-bank",
+      "addresses": {
+        "type": "score",
+        "ref_id": "market_score_subdim_traction",
+        "label": "Sous-score Market faible — preuve de traction client"
+      },
+      "explanation": "Votre Market Score est tiré vers le bas par l'absence de preuve de traction documentée. Ce programme de financement exige précisément ce justificatif — il est donc séquencé juste après l'étape de validation pour maximiser vos chances d'éligibilité.",
+      "resources": [
+        {
+          "source_id": "kb_0103",
+          "title": "Programme BFPME — Financement PME",
+          "type": "financing",
+          "link": "https://example.org/kb/0103",
+          "downloadable": true
+        }
+      ]
+    },
+    {
+      "id": "step_3",
+      "order": 3,
+      "title": "Structurer l'offre commerciale",
+      "title_en_short": "Structure commercial offer",
+      "time_horizon": "short_term",
+      "icon": "target-arrow",
+      "addresses": {
+        "type": "score",
+        "ref_id": "commercial_offer_score",
+        "label": "Commercial Offer Score — clarté de la proposition de valeur"
+      },
+      "explanation": "Le système a identifié une proposition de valeur peu différenciée par rapport à la concurrence locale. Clarifier cette offre avant le dépôt BTS augmente la cohérence de votre dossier auprès des partenaires d'accompagnement.",
+      "resources": [
+        {
+          "source_id": "kb_0076",
+          "title": "Cadre de positionnement produit — ODC",
+          "type": "guide",
+          "link": "https://example.org/kb/0076",
+          "downloadable": false
+        },
+        {
+          "source_id": "kb_0091",
+          "title": "Modèle de proposition de valeur — IEEE Section Tunisie",
+          "type": "guide",
+          "link": "https://example.org/kb/0091",
+          "downloadable": true
+        }
+      ]
+    },
+    {
+      "id": "step_4",
+      "order": 4,
+      "title": "Rejoindre un incubateur sectoriel",
+      "title_en_short": "Join sector incubator",
+      "time_horizon": "medium_term",
+      "icon": "users-group",
+      "addresses": {
+        "type": "score",
+        "ref_id": "scalability_score_subdim_dependency",
+        "label": "Scalability Score — dépendance à l'accompagnement manuel"
+      },
+      "explanation": "Votre Scalability Score signale une forte dépendance à l'accompagnement manuel pour livrer votre produit. Un incubateur sectoriel structuré apporte des processus et des outils pour réduire cette dépendance avant la phase de croissance.",
+      "resources": [
+        {
+          "source_id": "kb_0211",
+          "title": "Annuaire des incubateurs actifs en Tunisie",
+          "type": "ecosystem",
+          "link": "https://example.org/kb/0211",
+          "downloadable": true
+        },
+        {
+          "source_id": "kb_0058",
+          "title": "Critères d'éligibilité Startup Act",
+          "type": "administrative",
+          "link": "https://example.org/kb/0058",
+          "downloadable": false
+        }
+      ]
+    },
+    {
+      "id": "step_5",
+      "order": 5,
+      "title": "Préparer le dossier Startup Act",
+      "title_en_short": "Prepare Startup Act file",
+      "time_horizon": "medium_term",
+      "icon": "file-certificate",
+      "addresses": {
+        "type": "gap",
+        "ref_id": "gap_legal_structuring",
+        "label": "Structuration juridique incomplète pour le statut Startup"
+      },
+      "explanation": "Le diagnostic a détecté que la structuration juridique actuelle ne remplit pas encore les critères du label Startup Act. Cette étape est positionnée en moyen terme car elle dépend de la clarification de l'offre commerciale (étape 3).",
+      "resources": [
+        {
+          "source_id": "kb_0058",
+          "title": "Critères d'éligibilité Startup Act",
+          "type": "administrative",
+          "link": "https://example.org/kb/0058",
+          "downloadable": false
+        },
+        {
+          "source_id": "kb_0134",
+          "title": "Procédure de dépôt — Label Startup Tunisie",
+          "type": "administrative",
+          "link": "https://example.org/kb/0134",
+          "downloadable": true
+        }
+      ]
+    }
+  ]
+}
