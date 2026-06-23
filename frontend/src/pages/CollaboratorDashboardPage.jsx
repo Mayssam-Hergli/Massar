@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
-import { Users, BarChart3 } from 'lucide-react'
+import { Users, BarChart3, LogOut, HandHeart, Download } from 'lucide-react'
 
 const SORA = { fontFamily: "'Sora', sans-serif" }
 const INTER = { fontFamily: "'Inter', sans-serif" }
@@ -45,12 +45,25 @@ export default function CollaboratorDashboardPage() {
     }
   }, [navigate])
 
+  const handleLogout = () => {
+    sessionStorage.removeItem('collaborator_authed')
+    navigate('/')
+  }
+
   return (
     <div dir={isAr ? 'rtl' : 'ltr'} className="min-h-screen" style={{ backgroundColor: '#FFFFFF' }}>
       <div className="flex items-center justify-between px-6 sm:px-12 py-5" style={{ borderBottom: '1px solid rgba(112,150,209,0.1)' }}>
         <Link to="/" className="text-xl font-black tracking-tight" style={{ ...SORA, color: '#081F5C' }}>
           {isAr ? 'مسار' : 'Massar'}
         </Link>
+        <button
+          onClick={handleLogout}
+          className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-blue-700"
+          style={{ ...INTER, color: '#7096D1' }}
+        >
+          <LogOut size={16} style={isAr ? { transform: 'scaleX(-1)' } : {}} />
+          {isAr ? 'تسجيل الخروج' : 'Déconnexion'}
+        </button>
       </div>
 
       <main className="max-w-6xl mx-auto px-6 py-12">
@@ -89,7 +102,7 @@ export default function CollaboratorDashboardPage() {
                 </span>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 mb-4">
                 {Object.entries(s.scores).map(([key, value]) => (
                   <div key={key}>
                     <div className="flex justify-between text-[11px] mb-0.5" style={{ ...INTER, color: '#7096D1' }}>
@@ -102,20 +115,38 @@ export default function CollaboratorDashboardPage() {
                   </div>
                 ))}
               </div>
+
+              <button
+                className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-2 rounded-lg transition-colors hover:brightness-95"
+                style={{ ...INTER, backgroundColor: '#F0FBF4', color: '#3DA35D' }}
+              >
+                <HandHeart size={13} />
+                {isAr ? 'اقتراح مرافقة' : 'Proposer un accompagnement'}
+              </button>
             </div>
           ))}
         </div>
 
-        <div className="rounded-2xl p-6 flex items-center gap-3" style={{ backgroundColor: '#FFF9F0', border: '1px solid rgba(112,150,209,0.12)' }}>
-          <BarChart3 size={20} color="#7096D1" />
-          <div>
-            <h3 className="font-bold text-sm mb-0.5" style={{ ...SORA, color: '#081F5C' }}>
-              {isAr ? 'تقارير تحليلية' : 'Rapports analytiques'}
-            </h3>
-            <p className="text-sm" style={{ ...INTER, color: '#7096D1' }}>
-              {isAr ? 'هذا القسم قيد الإنشاء — ستتوفر تقارير مفصلة قريبا.' : 'Section en cours de construction — des rapports détaillés seront bientôt disponibles.'}
-            </p>
+        <div className="rounded-2xl p-6 flex flex-wrap items-center justify-between gap-4" style={{ backgroundColor: '#FFF9F0', border: '1px solid rgba(112,150,209,0.12)' }}>
+          <div className="flex items-center gap-3">
+            <BarChart3 size={20} color="#7096D1" />
+            <div>
+              <h3 className="font-bold text-sm mb-0.5" style={{ ...SORA, color: '#081F5C' }}>
+                {isAr ? 'تقارير تحليلية' : 'Rapports analytiques'}
+              </h3>
+              <p className="text-sm" style={{ ...INTER, color: '#7096D1' }}>
+                {isAr ? 'صدّر مؤشرات المحفظة المجمّعة لرواد الأعمال المتابعين.' : 'Exportez les analytiques agrégées du portefeuille suivi.'}
+              </p>
+            </div>
           </div>
+          <button
+            onClick={() => console.log('Téléchargement des analytiques — fonctionnalité à venir')}
+            className="flex items-center gap-2 font-semibold px-5 py-2.5 rounded-xl text-white transition-colors text-sm"
+            style={{ ...INTER, backgroundColor: '#3346AC' }}
+          >
+            <Download size={16} />
+            {isAr ? 'تحميل التحليلات' : 'Télécharger les analytiques'}
+          </button>
         </div>
       </main>
     </div>

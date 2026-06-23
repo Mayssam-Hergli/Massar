@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
 import { profilesApi } from '../api/profiles'
+import { diagnosticApi } from '../api/diagnostic'
 import { useActiveProfile } from '../hooks/useActiveProfile'
 import { useAuth } from '../context/AuthContext'
 import SiteHeader from '../components/SiteHeader'
@@ -500,18 +501,32 @@ export default function DiagnosticPage() {
     if (f) setFileName(f.name)
   }
 
-  const handleSubmit = async () => {
+  const submitAnswers = async (payload) => {
     if (!profile) return
     setError(null)
     setSubmitting(true)
     try {
-      await profilesApi.setAnswers(token, profile.id, answers)
+      // 1) persist the raw answers on the profile, 2) run MS1 validation + diagnostic upsert
+      await profilesApi.setAnswers(token, profile.id, payload)
+      await diagnosticApi.submit(token, profile.id, payload)
       navigate('/dashboard')
     } catch (err) {
-      setError(err.message)
-    } finally {
+      // surface MS1 errors — never swallow them. 422 validation detail can be an object.
+      let msg = err?.message
+      if (!msg || msg === '[object Object]') {
+        msg = isAr ? 'تعذر التحقق من إجابات التشخيص' : 'La validation du diagnostic a échoué'
+      }
+      setError(msg)
       setSubmitting(false)
     }
+  }
+
+  const handleSubmit = () => submitAnswers(answers)
+
+  // "Remplir avec données démo" — fill all 31 fields then submit identically
+  const handleDemoSubmit = () => {
+    setAnswers(DEMO_ANSWERS)
+    submitAnswers(DEMO_ANSWERS)
   }
 
   const L = {
@@ -559,10 +574,12 @@ export default function DiagnosticPage() {
             {L.title}
           </h1>
           <button
-            onClick={() => setAnswers(DEMO_ANSWERS)}
-            className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-gray-100"
+            onClick={handleDemoSubmit}
+            disabled={submitting}
+            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-gray-100 disabled:opacity-60"
             style={{ ...INTER, color: '#7096D1', border: '1px solid rgba(112,150,209,0.25)' }}
           >
+            {submitting && <Spinner size="sm" />}
             {L.demoFill}
           </button>
         </div>

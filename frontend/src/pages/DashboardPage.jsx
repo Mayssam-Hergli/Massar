@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
 import { useAuth } from '../context/AuthContext'
 import { useActiveProfile } from '../hooks/useActiveProfile'
 import { scoresApi } from '../api/scores'
+import { roadmapApi } from '../api/roadmap'
 import SiteHeader from '../components/SiteHeader'
 import SiteFooter from '../components/SiteFooter'
 import Spinner from '../components/Spinner'
-import { ChevronDown, AlertTriangle, CheckCircle2, Download, Leaf } from 'lucide-react'
+import { ChevronDown, AlertTriangle, CheckCircle2, Download, Leaf, ArrowRight, ClipboardList } from 'lucide-react'
 
 const SORA = { fontFamily: "'Sora', sans-serif" }
 const INTER = { fontFamily: "'Inter', sans-serif" }
@@ -145,11 +147,18 @@ function barColor(v) {
   return '#E07A1F'
 }
 
-function DimensionCard({ dim, data, isAr }) {
+// Real MS2 justifications may be a plain string (LLM text) or a { fr, ar } object.
+function justText(just, isAr) {
+  if (!just) return null
+  if (typeof just === 'string') return just
+  return isAr ? (just.ar || just.fr) : (just.fr || just.ar)
+}
+
+function DimensionCard({ dim, data, justification, isAr }) {
   const [open, setOpen] = useState(false)
   if (!data) return null
   const composite = data.composite
-  const just = MOCK_SCORES.justifications[dim]
+  const just = justText(justification, isAr)
 
   return (
     <div
@@ -203,7 +212,7 @@ function DimensionCard({ dim, data, isAr }) {
 
       {just && (
         <p className="text-xs leading-relaxed pt-2" style={{ ...INTER, color: '#7096D1', borderTop: '1px solid rgba(112,150,209,0.1)' }}>
-          {isAr ? just.ar : just.fr}
+          {just}
         </p>
       )}
     </div>
@@ -264,12 +273,14 @@ export default function DashboardPage() {
   const { lang } = useLang()
   const isAr = lang === 'ar'
   const { token } = useAuth()
+  const navigate = useNavigate()
   const { profile, loading: profileLoading } = useActiveProfile()
 
   const [data, setData] = useState(null)
   const [usingMock, setUsingMock] = useState(false)
   const [loading, setLoading] = useState(true)
   const [computing, setComputing] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -304,6 +315,19 @@ export default function DashboardPage() {
       setError(err.message)
     } finally {
       setComputing(false)
+    }
+  }
+
+  const handleGenerateRoadmap = async () => {
+    if (!profile) return
+    setError(null)
+    setGenerating(true)
+    try {
+      await roadmapApi.generate(token, profile.id)
+      navigate('/roadmap')
+    } catch (err) {
+      setError(err.message)
+      setGenerating(false)
     }
   }
 
@@ -361,19 +385,30 @@ export default function DashboardPage() {
         )}
 
         {!data ? (
-          <div className="text-center py-20 rounded-2xl" style={{ border: '2px dashed rgba(112,150,209,0.25)' }}>
-            <p style={{ ...INTER, color: '#7096D1' }}>
-              {isAr ? 'لم يتم حساب المؤشرات بعد. اضغط على "حساب المؤشرات" للبدء.' : 'Les scores ne sont pas encore calculés. Cliquez sur "Calculer les scores" pour démarrer.'}
+          <div className="text-center py-16 rounded-2xl flex flex-col items-center gap-5" style={{ border: '2px dashed rgba(112,150,209,0.25)' }}>
+            <p className="max-w-md" style={{ ...INTER, color: '#7096D1' }}>
+              {isAr
+                ? 'لم يتم حساب المؤشرات بعد. أكمل التشخيص أولا ثم اضغط على "حساب المؤشرات".'
+                : 'Les scores ne sont pas encore calculés. Complétez d\'abord le diagnostic, puis cliquez sur « Calculer les scores ».'}
             </p>
+            <Link
+              to="/diagnostic"
+              className="inline-flex items-center gap-2 font-semibold px-6 py-3 rounded-xl text-white transition-colors text-sm"
+              style={{ ...INTER, backgroundColor: '#3DA35D' }}
+            >
+              <ClipboardList size={16} />
+              {isAr ? 'إكمال التشخيص' : 'Compléter le diagnostic'}
+              <ArrowRight size={15} style={isAr ? { transform: 'scaleX(-1)' } : {}} />
+            </Link>
           </div>
         ) : (
           <>
             {/* Score cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-              <DimensionCard dim="market" data={data.scores?.market} isAr={isAr} />
-              <DimensionCard dim="commercial" data={data.scores?.commercial} isAr={isAr} />
-              <DimensionCard dim="innovation" data={data.scores?.innovation} isAr={isAr} />
-              <DimensionCard dim="scalability" data={data.scores?.scalability} isAr={isAr} />
+              <DimensionCard dim="market" data={data.scores?.market} justification={data.justifications?.market ?? MOCK_SCORES.justifications.market} isAr={isAr} />
+              <DimensionCard dim="commercial" data={data.scores?.commercial} justification={data.justifications?.commercial ?? MOCK_SCORES.justifications.commercial} isAr={isAr} />
+              <DimensionCard dim="innovation" data={data.scores?.innovation} justification={data.justifications?.innovation} isAr={isAr} />
+              <DimensionCard dim="scalability" data={data.scores?.scalability} justification={data.justifications?.scalability} isAr={isAr} />
               <GreenScoreCard data={data.scores?.green} isAr={isAr} />
             </div>
 
@@ -423,15 +458,30 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* PDF export placeholder */}
-            <button
-              onClick={() => console.log('Téléchargement du rapport PDF — fonctionnalité à venir')}
-              className="flex items-center gap-2 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm"
-              style={{ ...INTER, border: '1.5px solid #3DA35D', color: '#3DA35D' }}
-            >
-              <Download size={16} />
-              {isAr ? 'تحميل التقرير PDF' : 'Télécharger le rapport PDF'}
-            </button>
+            {/* Actions: generate roadmap (MS3) + PDF export */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={handleGenerateRoadmap}
+                disabled={generating}
+                className="flex items-center gap-2 font-semibold px-6 py-3 rounded-xl text-white disabled:opacity-60 transition-colors text-sm"
+                style={{ ...INTER, backgroundColor: '#3DA35D' }}
+              >
+                {generating && <Spinner size="sm" />}
+                {generating
+                  ? (isAr ? 'جارٍ إنشاء المسار...' : 'Génération du parcours...')
+                  : (isAr ? 'إنشاء مساري' : 'Générer mon parcours')}
+                {!generating && <ArrowRight size={16} style={isAr ? { transform: 'scaleX(-1)' } : {}} />}
+              </button>
+
+              <button
+                onClick={() => console.log('Téléchargement du rapport PDF — fonctionnalité à venir')}
+                className="flex items-center gap-2 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm"
+                style={{ ...INTER, border: '1.5px solid #7096D1', color: '#7096D1' }}
+              >
+                <Download size={16} />
+                {isAr ? 'تحميل التقرير PDF' : 'Télécharger le rapport PDF'}
+              </button>
+            </div>
           </>
         )}
       </main>
