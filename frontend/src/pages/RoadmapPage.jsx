@@ -1,77 +1,122 @@
-import { useParams } from 'react-router-dom'
+import { useLang } from '../context/LanguageContext'
+import SiteHeader from '../components/SiteHeader'
+import SiteFooter from '../components/SiteFooter'
 
-const HORIZONS = [
+const SORA = { fontFamily: "'Sora', sans-serif" }
+const INTER = { fontFamily: "'Inter', sans-serif" }
+
+const SECTIONS = [
   {
-    label: 'Immédiat (0–1 mois)',
-    color: 'bg-red-50 border-red-200',
-    tag: 'bg-red-100 text-red-700',
-    items: [
-      'Compléter la validation de l\'adéquation offre-besoin',
-      'Documenter 3 études de cas clients pour le pitch',
-      'Définir les KPIs de rétention pour l\'étape seed',
+    color: '#3DA35D',
+    label: { fr: 'IMMÉDIAT (0-2 semaines)', ar: 'فوري (0-2 أسابيع)' },
+    actions: [
+      {
+        title: { fr: 'Conduire 10 entretiens clients distributeurs', ar: 'إجراء 10 لقاءات مع عملاء موزعين' },
+        desc: { fr: 'Valider la demande réelle avant tout investissement supplémentaire.', ar: 'تثبيت الطلب الحقيقي قبل أي استثمار إضافي.' },
+        source: 'APII',
+      },
+      {
+        title: { fr: 'Contacter ANETI Espaces Entreprendre', ar: 'الاتصال بفضاءات منظمة التشغيل' },
+        desc: { fr: 'Bénéficier d\'un accompagnement gratuit pour structurer le projet.', ar: 'الاستفادة من مرافقة مجانية لتنظيم المشروع.' },
+        source: 'Programme CEFE',
+      },
     ],
   },
   {
-    label: 'Court terme (1–3 mois)',
-    color: 'bg-yellow-50 border-yellow-200',
-    tag: 'bg-yellow-100 text-yellow-700',
-    items: [
-      'Déposer la demande de brevet auprès de l\'INNORPI',
-      'Lancer un pilote dans 2 gouvernorats supplémentaires',
-      'Préparer le dossier d\'éligibilité Startup Act',
+    color: '#3346AC',
+    label: { fr: 'COURT TERME (1-3 mois)', ar: 'قصير المدى (1-3 أشهر)' },
+    actions: [
+      {
+        title: { fr: 'Créer structure juridique SUARL', ar: 'إنشاء شركة ذات مسؤولية محدودة فردية' },
+        desc: { fr: 'Sécuriser le cadre légal avant la signature de premiers contrats.', ar: 'تأمين الإطار القانوني قبل توقيع أولى العقود.' },
+        source: 'RNE',
+      },
+      {
+        title: { fr: 'Formaliser le business model', ar: 'صياغة نموذج الأعمال رسميا' },
+        desc: { fr: 'Documenter la stratégie de revenus pour convaincre les premiers partenaires.', ar: 'توثيق استراتيجية الإيرادات لإقناع الشركاء الأوائل.' },
+        source: 'BFPME',
+      },
     ],
   },
   {
-    label: 'Moyen terme (3–6 mois)',
-    color: 'bg-green-50 border-green-200',
-    tag: 'bg-green-100 text-green-700',
-    items: [
-      'Intégrer un partenariat avec BFPME pour le financement',
-      'Développer la version Arabic/Darija de l\'interface',
-      'Obtenir la certification ISO 14001 (impact environnemental)',
+    color: '#081F5C',
+    label: { fr: 'MOYEN TERME (3-6 mois)', ar: 'متوسط المدى (3-6 أشهر)' },
+    actions: [
+      {
+        title: { fr: 'Postuler au Label Startup Act', ar: 'التقديم للحصول على وسام Startup Act' },
+        desc: { fr: 'Accéder aux avantages fiscaux et financiers réservés aux startups labellisées.', ar: 'الاستفادة من المزايا الجبائية والمالية المخصصة للشركات الناشئة المصنفة.' },
+        source: 'startup.gov.tn',
+      },
+      {
+        title: { fr: 'Préparer dossier financement BTS', ar: 'تحضير ملف تمويل BTS' },
+        desc: { fr: 'Anticiper le besoin de trésorerie pour la phase de croissance.', ar: 'استباق الحاجة إلى السيولة لمرحلة النمو.' },
+        source: 'Programme BTS 2025',
+      },
     ],
   },
 ]
 
 export default function RoadmapPage() {
-  const { profileId } = useParams()
+  const { lang } = useLang()
+  const isAr = lang === 'ar'
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Roadmap</h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Générée par MS3 (RAG anchré dans 41+ ressources tunisiennes) — module en cours d'intégration
+    <div dir={isAr ? 'rtl' : 'ltr'} className="min-h-screen flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
+      <SiteHeader />
+
+      <main className="flex-1 max-w-3xl mx-auto w-full px-6 pt-32 pb-20">
+        <h1 className="font-black text-3xl mb-10 text-center" style={{ ...SORA, color: '#081F5C' }}>
+          {isAr ? (
+            <>مسارك<span style={{ color: '#3DA35D' }}> الخاص</span></>
+          ) : (
+            <>Votre <span style={{ color: '#3DA35D' }}>Parcours</span></>
+          )}
+        </h1>
+
+        <div className="space-y-10">
+          {SECTIONS.map((section, si) => (
+            <div key={si} style={{ borderInlineStart: `3px solid ${section.color}`, paddingInlineStart: '24px' }}>
+              <span
+                className="inline-block text-xs font-bold px-3 py-1 rounded-full mb-4"
+                style={{ ...INTER, backgroundColor: `${section.color}1A`, color: section.color }}
+              >
+                {isAr ? section.label.ar : section.label.fr}
+              </span>
+
+              <div className="space-y-4">
+                {section.actions.map((action, ai) => (
+                  <div
+                    key={ai}
+                    className="rounded-xl p-5"
+                    style={{ backgroundColor: '#FFFFFF', boxShadow: '0 2px 16px rgba(51,70,172,0.07)', border: '1px solid rgba(112,150,209,0.1)' }}
+                  >
+                    <h3 className="font-bold text-base mb-1.5" style={{ ...SORA, color: '#081F5C' }}>
+                      {isAr ? action.title.ar : action.title.fr}
+                    </h3>
+                    <p className="text-sm mb-3" style={{ ...INTER, color: '#7096D1' }}>
+                      {isAr ? action.desc.ar : action.desc.fr}
+                    </p>
+                    <span
+                      className="inline-block text-xs font-semibold px-2.5 py-1 rounded-full"
+                      style={{ ...INTER, backgroundColor: '#F0FBF4', color: '#3DA35D' }}
+                    >
+                      {action.source}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-center text-xs mt-12" style={{ ...INTER, color: 'rgba(112,150,209,0.7)' }}>
+          {isAr
+            ? 'سيتم تخصيص هذا المسار من قبل وكيل MS3 — البيانات ثابتة لأغراض العرض التجريبي.'
+            : "Ce parcours sera personnalisé par l'agent MS3 — données statiques pour la démonstration."}
         </p>
-      </div>
+      </main>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 text-sm text-amber-800">
-        <strong>Aperçu statique</strong> — Les données ci-dessous sont un exemple illustratif.
-        La roadmap réelle sera générée automatiquement par l'agent MS3 en fonction de vos scores
-        une fois le module intégré.
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {HORIZONS.map((h) => (
-          <div key={h.label} className={`rounded-xl border p-5 ${h.color}`}>
-            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${h.tag}`}>
-              {h.label}
-            </span>
-            <ul className="mt-4 space-y-3">
-              {h.items.map((item, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                  <span className="mt-0.5 flex-shrink-0 text-gray-400">•</span>
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-
-      <p className="text-xs text-gray-400 text-center">
-        Chaque recommandation citée par MS3 inclura sa source (APII, BFPME, Startup Act, ANPE...)
-      </p>
+      <SiteFooter />
     </div>
   )
 }

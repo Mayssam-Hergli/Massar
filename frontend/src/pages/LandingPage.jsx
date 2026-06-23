@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
-import { ArrowRight, Leaf, BarChart3, Share2, Sparkles } from 'lucide-react'
+import { ArrowRight, Leaf, BarChart3, Share2, Sparkles, Key } from 'lucide-react'
 
 const SORA  = { fontFamily: "'Sora', sans-serif" }
 const INTER = { fontFamily: "'Inter', sans-serif" }
@@ -249,6 +249,26 @@ export default function LandingPage() {
               style={{ ...INTER, fontSize: '1rem' }}
             >
               {t.landing.cta_login}
+            </Link>
+          </div>
+
+          {/* Investor / Collaborator access */}
+          <div className="flex flex-col sm:flex-row gap-4 mt-4" style={fadeUp(460)}>
+            <Link
+              to="/investor/login"
+              className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:underline"
+              style={{ ...INTER, color: '#7096D1' }}
+            >
+              <Key size={14} />
+              {isAr ? 'فضاء المستثمر' : 'Espace Investisseur'}
+            </Link>
+            <Link
+              to="/collaborator/login"
+              className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors hover:underline"
+              style={{ ...INTER, color: '#7096D1' }}
+            >
+              <Key size={14} />
+              {isAr ? 'فضاء المتعاون' : 'Espace Collaborateur'}
             </Link>
           </div>
         </section>
