@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
+import RequireDiagnostic from './components/RequireDiagnostic'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
@@ -28,11 +29,16 @@ export default function App() {
 
       {/* Main entrepreneur flow — self-contained pages (own header/footer) */}
       <Route element={<ProtectedRoute />}>
+        {/* Diagnostic is always reachable once authenticated */}
         <Route path="/diagnostic" element={<DiagnosticPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/roadmap" element={<RoadmapPage />} />
-        <Route element={<Layout />}>
-          <Route path="/assistant" element={<AssistantPage />} />
+
+        {/* Everything past the diagnostic is gated until it's completed */}
+        <Route element={<RequireDiagnostic />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/roadmap" element={<RoadmapPage />} />
+          <Route element={<Layout />}>
+            <Route path="/assistant" element={<AssistantPage />} />
+          </Route>
         </Route>
       </Route>
 

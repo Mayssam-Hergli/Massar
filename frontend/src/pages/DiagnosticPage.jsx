@@ -1,10 +1,13 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLang } from '../context/LanguageContext'
 import { profilesApi } from '../api/profiles'
 import { diagnosticApi } from '../api/diagnostic'
+import { scoresApi } from '../api/scores'
 import { useActiveProfile } from '../hooks/useActiveProfile'
 import { useAuth } from '../context/AuthContext'
+import { useDiagnosticFlow } from '../hooks/useDiagnosticFlow'
+import { GRAPH, buildFinalAnswers } from '../data/diagnosticGraph'
 import SiteHeader from '../components/SiteHeader'
 import SiteFooter from '../components/SiteFooter'
 import Spinner from '../components/Spinner'
@@ -397,6 +400,13 @@ function initAnswers() {
   return a
 }
 
+// Flatten the step fields into an id -> field map. The dynamic graph references
+// these keys; this map provides the label/options content for each node.
+const FIELDS = {}
+STEPS.forEach((step) => {
+  step.fields.forEach((f) => { FIELDS[f.key] = { ...f, group: step.title } })
+})
+
 function OptionCards({ field, value, onChange, isAr }) {
   const cols = field.options.length > 3 ? 'sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'
   return (
@@ -485,49 +495,59 @@ export default function DiagnosticPage() {
   const navigate = useNavigate()
   const { profile, loading: profileLoading, error: profileError } = useActiveProfile()
 
-  const [step, setStep] = useState(0)
-  const [answers, setAnswers] = useState(initAnswers)
+  const flow = useDiagnosticFlow(GRAPH)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
   const [fileName, setFileName] = useState(null)
+  const [textVal, setTextVal] = useState('')
   const fileInputRef = useRef(null)
+  const submittedRef = useRef(false)
 
-  const currentStep = STEPS[step]
-  const isLast = step === STEPS.length - 1
-  const set = (key, value) => setAnswers((a) => ({ ...a, [key]: value }))
+  const field = flow.done ? null : FIELDS[flow.currentId]
+  const isText = field?.type === 'text'
+
+  // Keep the free-text input in sync with the current node (incl. after Back).
+  useEffect(() => {
+    if (isText) setTextVal(flow.answers[flow.currentId] ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.currentId])
 
   const handleFileChange = (e) => {
     const f = e.target.files?.[0]
     if (f) setFileName(f.name)
   }
 
-  const submitAnswers = async (payload) => {
-    if (!profile) return
+  // Submit the dynamic path: complete the 31-key contract (branch-consistent
+  // defaults), persist answers, run MS1 validation, compute MS2 scores, redirect.
+  const finalize = async (rawAnswers) => {
+    if (!profile || submittedRef.current) return
+    submittedRef.current = true
     setError(null)
     setSubmitting(true)
     try {
-      // 1) persist the raw answers on the profile, 2) run MS1 validation + diagnostic upsert
-      await profilesApi.setAnswers(token, profile.id, payload)
-      await diagnosticApi.submit(token, profile.id, payload)
+      const full = buildFinalAnswers(rawAnswers, initAnswers())
+      await profilesApi.setAnswers(token, profile.id, full)
+      await diagnosticApi.submit(token, profile.id, full)
+      await scoresApi.compute(token, profile.id)
       navigate('/dashboard')
     } catch (err) {
-      // surface MS1 errors — never swallow them. 422 validation detail can be an object.
       let msg = err?.message
       if (!msg || msg === '[object Object]') {
         msg = isAr ? 'تعذر التحقق من إجابات التشخيص' : 'La validation du diagnostic a échoué'
       }
       setError(msg)
       setSubmitting(false)
+      submittedRef.current = false
     }
   }
 
-  const handleSubmit = () => submitAnswers(answers)
+  // Auto-submit as soon as the dynamic path reaches its end.
+  useEffect(() => {
+    if (flow.done && profile && !submittedRef.current) finalize(flow.answers)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow.done, profile])
 
-  // "Remplir avec données démo" — fill all 31 fields then submit identically
-  const handleDemoSubmit = () => {
-    setAnswers(DEMO_ANSWERS)
-    submitAnswers(DEMO_ANSWERS)
-  }
+  const handleDemoSubmit = () => finalize(DEMO_ANSWERS)
 
   const L = {
     title: isAr ? 'تشخيص المشروع' : 'Diagnostic de projet',
@@ -535,18 +555,54 @@ export default function DiagnosticPage() {
     uploadLabel: isAr
       ? 'وثائق اختيارية — خطة الأعمال، القوائم المالية، العقود (PDF, JPG, PNG)'
       : 'Documents optionnels — business plan, états financiers, contrats (PDF, JPG, PNG)',
-    step: isAr ? 'خطوة' : 'Étape',
-    of: isAr ? 'من' : 'sur',
+    question: isAr ? 'سؤال' : 'Question',
     prev: isAr ? 'السابق' : 'Précédent',
     next: isAr ? 'التالي' : 'Suivant',
-    submit: isAr ? 'إرسال التشخيص' : 'Soumettre le diagnostic',
-    sending: isAr ? 'جارٍ الإرسال...' : 'Envoi...',
+    selectHint: isAr ? 'اختر إجابة للمتابعة' : 'Sélectionnez une réponse pour continuer',
+    computing: isAr ? 'جارٍ حساب مؤشراتك...' : 'Analyse en cours et calcul de vos scores…',
+    computingSub: isAr ? 'قد يستغرق ذلك بضع ثوانٍ' : 'Cela peut prendre quelques secondes',
+    retry: isAr ? 'إعادة المحاولة' : 'Réessayer',
   }
 
   if (profileLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#FFFFFF' }}>
         <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  // Terminal state: submitting/scoring spinner, or an error + retry if it failed.
+  if (submitting || flow.done) {
+    return (
+      <div dir={isAr ? 'rtl' : 'ltr'} className="min-h-screen flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
+        <SiteHeader />
+        <main className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
+          {error ? (
+            <>
+              <p className="font-semibold text-lg" style={{ ...SORA, color: '#081F5C' }}>
+                {isAr ? 'تعذر إتمام التشخيص' : 'Le diagnostic n’a pas pu aboutir'}
+              </p>
+              <p className="text-sm max-w-md px-4 py-2.5 rounded-xl" style={{ ...INTER, color: '#c0392b', backgroundColor: '#FFF5F5', border: '1px solid rgba(192,57,43,0.15)' }}>
+                {error}
+              </p>
+              <button
+                onClick={() => finalize(flow.answers)}
+                className="font-semibold px-6 py-2.5 rounded-xl text-white transition-colors text-sm"
+                style={{ ...INTER, backgroundColor: '#3346AC' }}
+              >
+                {L.retry}
+              </button>
+            </>
+          ) : (
+            <>
+              <Spinner size="lg" />
+              <p className="font-semibold text-lg" style={{ ...SORA, color: '#081F5C' }}>{L.computing}</p>
+              <p className="text-sm" style={{ ...INTER, color: '#7096D1' }}>{L.computingSub}</p>
+            </>
+          )}
+        </main>
+        <SiteFooter />
       </div>
     )
   }
@@ -579,55 +635,59 @@ export default function DiagnosticPage() {
             className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full transition-colors hover:bg-gray-100 disabled:opacity-60"
             style={{ ...INTER, color: '#7096D1', border: '1px solid rgba(112,150,209,0.25)' }}
           >
-            {submitting && <Spinner size="sm" />}
             {L.demoFill}
           </button>
         </div>
 
-        {/* Progress bar */}
-        <div className="flex gap-1.5 mb-2">
-          {STEPS.map((s, i) => (
-            <div
-              key={i}
-              className="flex-1 h-1.5 rounded-full transition-colors duration-300"
-              style={{ backgroundColor: i < step ? '#3DA35D' : i === step ? '#3346AC' : 'rgba(112,150,209,0.18)' }}
-            />
-          ))}
+        {/* Dynamic progress bar (length varies by path) */}
+        <div className="h-1.5 rounded-full overflow-hidden mb-2" style={{ backgroundColor: 'rgba(112,150,209,0.18)' }}>
+          <div
+            className="h-full rounded-full transition-all duration-300"
+            style={{ width: `${flow.progress}%`, backgroundColor: '#3346AC' }}
+          />
         </div>
         <p className="text-xs mb-6" style={{ ...INTER, color: '#7096D1' }}>
-          {L.step} {step + 1} {L.of} {STEPS.length} — {isAr ? currentStep.title.ar : currentStep.title.fr}
+          {L.question} {flow.answered + 1} — {field && (isAr ? field.group.ar : field.group.fr)}
         </p>
 
-        {/* Card */}
-        <div
-          className="rounded-2xl p-6 sm:p-8 space-y-6"
-          style={{
-            backgroundColor: '#FFFFFF',
-            boxShadow: '0 8px 40px rgba(51,70,172,0.08), 0 1px 4px rgba(51,70,172,0.05)',
-            border: '1px solid rgba(112,150,209,0.12)',
-          }}
-        >
-          <h2 className="font-bold text-lg" style={{ ...SORA, color: '#081F5C' }}>
-            {isAr ? currentStep.title.ar : currentStep.title.fr}
-          </h2>
+        {/* Current question card */}
+        {field && (
+          <div
+            className="rounded-2xl p-6 sm:p-8 space-y-5"
+            style={{
+              backgroundColor: '#FFFFFF',
+              boxShadow: '0 8px 40px rgba(51,70,172,0.08), 0 1px 4px rgba(51,70,172,0.05)',
+              border: '1px solid rgba(112,150,209,0.12)',
+            }}
+          >
+            <label className="block font-bold text-lg" style={{ ...SORA, color: '#081F5C' }}>
+              {isAr ? field.label.ar : field.label.fr}
+            </label>
 
-          {currentStep.fields.map((field) => (
-            <div key={field.key}>
-              <label
-                className="block text-sm font-semibold mb-2"
-                style={{ ...INTER, color: '#081F5C' }}
-              >
-                {isAr ? field.label.ar : field.label.fr}
-              </label>
+            {isText ? (
+              <input
+                type="text"
+                value={textVal}
+                onChange={(e) => setTextVal(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') flow.answer(textVal) }}
+                placeholder={isAr ? field.placeholder.ar : field.placeholder.fr}
+                autoFocus
+                style={{
+                  ...INTER, width: '100%', border: '1.5px solid rgba(112,150,209,0.25)',
+                  borderRadius: '10px', padding: '11px 14px', fontSize: '0.9rem',
+                  color: '#081F5C', backgroundColor: '#FAFBFF', textAlign: isAr ? 'right' : 'left',
+                }}
+              />
+            ) : (
               <FieldRenderer
                 field={field}
-                value={answers[field.key]}
-                onChange={(v) => set(field.key, v)}
+                value={flow.answers[flow.currentId]}
+                onChange={(v) => flow.answer(v)}
                 isAr={isAr}
               />
-            </div>
-          ))}
-        </div>
+            )}
+          </div>
+        )}
 
         {(error || profileError) && (
           <p
@@ -638,11 +698,12 @@ export default function DiagnosticPage() {
           </p>
         )}
 
-        {/* Navigation */}
-        <div className="flex justify-between mt-8">
+        {/* Navigation: Back is always available; advancing is by selecting an
+            option (single-choice) or pressing Next (free-text). */}
+        <div className="flex justify-between items-center mt-8">
           <button
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0}
+            onClick={flow.back}
+            disabled={!flow.canGoBack}
             className="flex items-center gap-1.5 font-semibold px-5 py-2.5 rounded-xl disabled:opacity-40 transition-colors text-sm"
             style={{ ...INTER, border: '1.5px solid #3346AC', color: '#3346AC' }}
           >
@@ -650,25 +711,19 @@ export default function DiagnosticPage() {
             {L.prev}
           </button>
 
-          {isLast ? (
+          {isText ? (
             <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="flex items-center gap-2 font-semibold px-6 py-2.5 rounded-xl text-white disabled:opacity-60 transition-colors text-sm"
-              style={{ ...INTER, backgroundColor: '#3DA35D' }}
-            >
-              {submitting && <Spinner size="sm" />}
-              {submitting ? L.sending : L.submit}
-            </button>
-          ) : (
-            <button
-              onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}
+              onClick={() => flow.answer(textVal)}
               className="flex items-center gap-1.5 font-semibold px-6 py-2.5 rounded-xl text-white transition-colors text-sm"
               style={{ ...INTER, backgroundColor: '#3346AC' }}
             >
               {L.next}
               {isAr ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
             </button>
+          ) : (
+            <span className="text-xs" style={{ ...INTER, color: 'rgba(112,150,209,0.8)' }}>
+              {L.selectHint}
+            </span>
           )}
         </div>
       </main>
