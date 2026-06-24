@@ -46,6 +46,7 @@ from rag.roadmap import generate_roadmap, evaluate_progress, contextual_chat, de
 
 router = APIRouter(prefix="/roadmap", tags=["Roadmap (MS3)"])
 
+
 DEFAULT_STEP_STATUS = "pending"  # see SCHEMA GAP #3 above
 
 
@@ -108,9 +109,10 @@ def generate(
                 anomaly_flags=anomaly_flags,
                 low_scoring_dimensions=low_scoring_dimensions,
             )
+            print(f"Generated roadmap for profile {profile_id}: {roadmap_json}")
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Roadmap generation failed: {exc}")
-
+        print(f"Generated roadmap for profile {profile_id}: {roadmap_json}")
         roadmap_id = str(uuid.uuid4())
         cur.execute(
             "INSERT INTO roadmaps (id, project_id, diagnostic_id, maturity_stage_snapshot, generated_at) VALUES (%s, %s, %s, %s, %s)",
@@ -118,35 +120,28 @@ def generate(
         )
 
         for step in roadmap_json.get("steps", []):
-            resources = step.get("resources", [])
-            referenced_kb_id = None
-            extra_resources_note = ""
-            if resources:
-                first_kb_id = resources[0].get("source_id")
-                # FK kb_refrence references knowledge_base(kb_id) — the text key,
-                # not the bigint id. Store the kb_id so the constraint is satisfied.
-                cur.execute("SELECT kb_id FROM knowledge_base WHERE kb_id = %s", (first_kb_id,))
-                kb_row = cur.fetchone()
-                referenced_kb_id = kb_row["kb_id"] if kb_row else None
-                if len(resources) > 1:
-                    extra_titles = ", ".join(r.get("title", r.get("source_id", "")) for r in resources[1:])
-                    extra_resources_note = f" (voir aussi: {extra_titles})"
+            # No more hacking the text together! The LLM now provides a clean array
+            # of IDs, and a rich explanation inside the "description" field.
+            
+            kb_ids_array = step.get("addresses", [])
 
             cur.execute(
                 """
-                INSERT INTO roadmap_steps
-                    (id, roadmap_id, step_order, title, time_horizon, description, status, referenced_kb_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO roadmap_steps 
+                    (id, roadmap_id, step_order, title, title_en_short, time_horizon, icon, description, status, referenced_kb_ids) 
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     str(uuid.uuid4()),
                     roadmap_id,
-                    step.get("order"),
+                    step.get("order"),      # Updated to match our new schema
                     step.get("title"),
+                    step.get("title_en_short"),
                     step.get("time_horizon"),
-                    (step.get("explanation") or "") + extra_resources_note,
-                    DEFAULT_STEP_STATUS,
-                    referenced_kb_id,
+                    step.get("icon"),            # Now saving the icon correctly!
+                    step.get("explanation"),     # The rich AI explanation goes straight in
+                    DEFAULT_STEP_STATUS,         # usually "pending"
+                    kb_ids_array                 # Psycopg2 automatically converts this Python list to a PostgreSQL array!
                 ),
             )
 
@@ -164,6 +159,7 @@ def get_cached(
     current_user: dict = Depends(get_current_user),
 ):
     with db_cursor(db) as cur:
+        # 1. Verify project belongs to user
         cur.execute(
             "SELECT id FROM projects WHERE id = %s AND user_id = %s",
             (profile_id, current_user["id"]),
@@ -171,6 +167,7 @@ def get_cached(
         if cur.fetchone() is None:
             raise HTTPException(status_code=404, detail="Profile not found")
 
+        # 2. Get the latest roadmap for this project
         cur.execute(
             "SELECT id, maturity_stage_snapshot, generated_at FROM roadmaps WHERE project_id = %s ORDER BY generated_at DESC LIMIT 1",
             (profile_id,),
@@ -179,12 +176,14 @@ def get_cached(
         if roadmap_row is None:
             raise HTTPException(status_code=404, detail="Roadmap not yet generated. POST /roadmap/generate/{profile_id} first.")
 
+        # 3. Fetch steps and JOIN the knowledge base using the ANY() array operator.
+        # Added rs.icon here!
         cur.execute(
             """
-            SELECT rs.step_order, rs.title, rs.time_horizon, rs.description, rs.status,
+            SELECT rs.id AS step_id, rs.step_order, rs.title, rs.time_horizon, rs.icon, rs.description, rs.status,
                    kb.kb_id, kb.title AS kb_title, kb.type AS kb_type, kb.source_url
             FROM roadmap_steps rs
-            LEFT JOIN knowledge_base kb ON kb.kb_id = rs.referenced_kb_id
+            LEFT JOIN knowledge_base kb ON kb.kb_id = ANY(rs.referenced_kb_ids)
             WHERE rs.roadmap_id = %s
             ORDER BY rs.step_order
             """,
@@ -192,32 +191,46 @@ def get_cached(
         )
         step_rows = cur.fetchall()
 
-    steps = []
-    for r in step_rows:
-        resources = []
-        if r["kb_id"]:
-            resources.append({
-                "source_id": r["kb_id"],
-                "title": r["kb_title"],
-                "type": r["kb_type"],
-                "link": r["source_url"],
-            })
-        steps.append({
-            "order": r["step_order"],
-            "title": r["title"],
-            "time_horizon": r["time_horizon"],
-            "explanation": r["description"],
-            "status": r["status"],
-            "resources": resources,
-        })
+        # 4. Fold the flat SQL rows back into a nested dictionary
+        steps_dict = {}
+        for row in step_rows:
+            step_id = row["step_id"]
+            
+            # If we haven't seen this step yet, create its base structure
+            if step_id not in steps_dict:
+                steps_dict[step_id] = {
+                    "id": step_id,
+                    "order": row["step_order"],
+                    "title": row["title"],
+                    "time_horizon": row["time_horizon"],
+                    "icon": row["icon"],
+                    "explanation": row["description"], # Frontend looks for 'explanation' or 'description'
+                    "status": row["status"],
+                    "resources": []
+                }
+            
+            # If there is a joined KB resource attached to this row, append it
+            if row["kb_id"]:
+                steps_dict[step_id]["resources"].append({
+                    "source_id": row["kb_id"],
+                    "title": row["kb_title"],
+                    "type": row["kb_type"],
+                    "link": row["source_url"]
+                })
 
-    data = {
-        "project_id": profile_id,
-        "generated_at": roadmap_row["generated_at"].isoformat() if roadmap_row["generated_at"] else None,
-        "maturity_stage": roadmap_row["maturity_stage_snapshot"],
-        "steps": steps,
-    }
-    return {"profile_id": profile_id, "status": "success", "data": data}
+        # Convert the dictionary back to a list, sorted by step_order
+        steps_list = sorted(list(steps_dict.values()), key=lambda x: x["order"])
+
+        # 5. Return the clean, nested JSON
+        return {
+            "status": "success",
+            "data": {
+                "project_id": profile_id,
+                "generated_at": roadmap_row["generated_at"],
+                "maturity_stage": roadmap_row["maturity_stage_snapshot"],
+                "steps": steps_list
+            }
+        }
 
 
 # ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@ import os
 import json
 from typing import Any, Dict, List
 
-RAG_LLM_PROVIDER = os.getenv("RAG_LLM_PROVIDER", "groq").lower()
+RAG_LLM_PROVIDER = os.getenv("RAG_LLM_PROVIDER", "gemini").lower()
 
 
 def _convert_schema_for_gemini(schema: Dict[str, Any]) -> Dict[str, Any]:

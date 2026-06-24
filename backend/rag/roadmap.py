@@ -34,17 +34,16 @@ ROADMAP_SCHEMA = {
                     "title": {"type": "string"},
                     "title_en_short": {"type": "string"},
                     "time_horizon": {"type": "string"},
-                    "icon": {"type": "string"},
+                    "icon": {"type": "string","description": "e.g., clipboard-check, building-bank, target-arrow"},
                     "addresses": {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string"},
-                            "ref_id": {"type": "string"},
-                            "label": {"type": "string"},
-                        },
-                        "required": ["type", "ref_id", "label"],
+                       "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tableau contenant 2 à 3 IDs de la base de connaissances (ex: ['kb_0042', 'kb_0017'])"
                     },
-                    "explanation": {"type": "string"},
+                    "explanation": {
+                        "type": "string", 
+                        "description": "Explication approfondie: Pourquoi cette étape est cruciale, basée sur le diagnostic."
+                    },
                     "resources": {
                         "type": "array",
                         "items": {
@@ -69,7 +68,31 @@ ROADMAP_SCHEMA = {
     },
     "required": ["project_id", "generated_at", "maturity_stage", "steps"],
 }
+_SYSTEM_PROMPT = """
+Tu es un conseiller expert en entrepreneuriat et innovation (spécialiste de l'écosystème tunisien : Startup Act, BFPME, APII, RNE).
+Ta mission est de générer une feuille de route hyper-personnalisée en te basant STRICTEMENT sur le diagnostic de l'utilisateur.
 
+RÈGLES DE GÉNÉRATION (À SUIVRE IMPÉRATIVEMENT) :
+
+1. LANGUE ET TON :
+   - Rédige l'intégralité du contenu en Français professionnel, clair et encourageant.
+   - Ne donne jamais de conseils génériques (ex: "Trouver de l'argent"). Sois précis (ex: "Valider le modèle économique avant d'approcher la BFPME").
+
+2. EXPLICATION CONTEXTUELLE (Le "Pourquoi") :
+   - Dans le champ `description`, tu dois expliquer POURQUOI l'utilisateur doit faire cette étape en faisant référence à ses faiblesses détectées dans le diagnostic.
+   - Exemple : "Le diagnostic montre un manque de preuve de traction. Cette étape comble cet écart avant toute démarche de financement."
+
+3. RESSOURCES MULTIPLES :
+   - Chaque étape DOIT faire référence à au moins 2 ressources de la base de connaissances (Knowledge Base) qui sont pertinentes.
+   - Retourne uniquement les identifiants dans le tableau `referenced_kb_ids` (ex: "kb_0041").
+
+4. HORIZON TEMPOREL STRICT :
+   - Classe les étapes de manière chronologique logique.
+   - Utilise EXCLUSIVEMENT les valeurs : "immediate", "short_term", ou "medium_term". N'invente pas de nouveaux horizons comme "Horizon 1".
+
+5. ACTIONNABILE ET MESURABLE :
+   - Le `title` doit commencer par un verbe d'action à l'infinitif (ex: "Valider", "Enregistrer", "Structurer", "Pivoter").
+"""
 PROGRESS_SCHEMA = {
     "type": "object",
     "properties": {
@@ -239,17 +262,7 @@ def build_scoring_data(scores: dict[str, Any], anomaly_flags: list[dict]) -> dic
 # Generation
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """
-You are a deterministic routing and reasoning engine for Tunisian startups.
-Analyze the input blocks and return a structured JSON roadmap.
 
-Strict structural constraints:
-- Return ONLY JSON matching the requested payload format.
-- No conversational filler, backticks, or markdown envelopes.
-- Do not hallucinate fields or program names outside of the provided
-  knowledge base chunks — every resource you cite must come from
-  RETRIEVED KNOWLEDGE BASE CHUNKS, never invented.
-"""
 
 
 def generate_roadmap(
@@ -310,7 +323,7 @@ def generate_roadmap(
             schema=ROADMAP_SCHEMA,
             tool_name="generate_roadmap_json",
             tool_description="Generates the final structured JSON roadmap.",
-            max_tokens=4000,
+            max_tokens=5000,
             temperature=0.1,
         )
     except Exception:
@@ -324,7 +337,7 @@ def generate_roadmap(
             schema=ROADMAP_SCHEMA,
             tool_name="generate_roadmap_json",
             tool_description="Generates the final structured JSON roadmap.",
-            max_tokens=4000,
+            max_tokens=5000,
             temperature=0.1,
         )
 

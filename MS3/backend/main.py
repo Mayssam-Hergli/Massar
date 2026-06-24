@@ -2,6 +2,7 @@ import os
 from typing import Dict, List, Literal, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, ValidationError
+from fastapi.middleware.cors import CORSMiddleware  # <-- ADD THIS IMPORT
 import json
 from dotenv import load_dotenv
 
@@ -11,6 +12,16 @@ load_dotenv()  # reads .env so GEMINI_API_KEY / ANTHROPIC_API_KEY / LLM_PROVIDER
 
 app = FastAPI(title="MS3 — Roadmap Generation Engine")
 
+# ---------------------------------------------------------------------------
+# ENABLE CORS (Cross-Origin Resource Sharing)
+# ---------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, swap "*" for your exact frontend URL (e.g., ["http://localhost:5173"])
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ---------------------------------------------------------------------------
 # LLM Provider Configuration
 # ---------------------------------------------------------------------------

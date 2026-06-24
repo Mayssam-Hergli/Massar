@@ -21,4 +21,13 @@ export const roadmapApi = {
       },
       token,
     }),
+    evaluateProgress: (token, { profileId, latestUpdate }) =>
+    request('/roadmap/evaluate-progress', {
+      method: 'POST',
+      body: {
+        profile_id: profileId,
+        latest_update: latestUpdate,
+      },
+      token,
+    }),
 }
