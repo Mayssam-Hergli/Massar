@@ -154,6 +154,332 @@ function justText(just, isAr) {
   return isAr ? (just.ar || just.fr) : (just.fr || just.ar)
 }
 
+// Escape user/LLM text before injecting into the report HTML.
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ))
+}
+
+// Build a self-contained, official-grade HTML report from the live scores and
+// open it ready to print / save as PDF (no extra dependency needed).
+function buildReportHtml(data, profileName, isAr) {
+  const origin = (typeof window !== 'undefined' && window.location && window.location.origin) || ''
+  const logo = `${origin}/massar-logo.svg`
+  const scores = data.scores || {}
+  const bizDims = ['market', 'commercial', 'innovation', 'scalability']
+  const now = new Date()
+  const date = now.toLocaleDateString(isAr ? 'ar-TN' : 'fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })
+  const ref = `MSR-${now.getFullYear()}-${String(now.getTime()).slice(-5)}`
+  const name = (profileName && String(profileName)) || (isAr ? 'مشروعي' : 'Mon Projet')
+
+  const L = isAr ? {
+    dir: 'rtl', confidentiel: 'سري', confReport: 'تقرير سري',
+    title: 'تقرير التشخيص والتقييم', subtitle: 'تقييم معمّق متعدد الأبعاد لجاهزية المشروع الريادي',
+    preparedFor: 'أُعدّ لفائدة', preparedBy: 'أُعدّ من قبل', platform: 'منصة مسار',
+    dateL: 'تاريخ التقرير', version: 'الإصدار', reference: 'المرجع', classification: 'التصنيف',
+    restricted: 'سري — تداول محدود',
+    s01: 'الخلاصة', execSummary: 'الملخص التنفيذي', keyPoints: 'النقاط الرئيسية',
+    s02: 'لمحة', keyMetrics: 'المؤشرات الرئيسية',
+    scoreGlobal: 'المؤشر العام', greenScore: 'المؤشر البيئي', anomaliesK: 'حالات الخلل', criteria: 'المعايير المحلّلة',
+    s03: 'تحليل', breakdown: 'تفصيل المؤشرات', dimension: 'المحور', scoreH: 'المؤشر', statusH: 'الحالة', compositeRow: 'المؤشر المركّب العام',
+    s04: 'تفصيل', detailed: 'تحليل مفصّل حسب المحور',
+    s05: 'اليقظة', anomTitle: 'حالات الخلل ونقاط اليقظة', noAnom: 'لم يتم رصد أي خلل',
+    envTitle: 'المؤشر البيئي (PNUD)', undpTotal: 'المجموع PNUD',
+    sain: 'سليم', modere: 'متوسط', critique: 'حرج', high: 'حرجة', medium: 'متوسطة',
+    signTitle: 'المصادقة والإمضاء', authSign: 'إمضاء معتمد', official: 'تقرير رسمي',
+    disclaimer: 'أُنشئ هذا التقرير آليًا بواسطة منصة مسار انطلاقًا من التشخيص الذاتي للمشروع ونموذج تقييم متعدد الأبعاد قابل للتفسير. النتائج استشارية وتُقرأ إلى جانب العناية الواجبة.',
+    generatedBy: 'تم إنشاؤه بواسطة منصة مسار', pageWord: 'صفحة',
+  } : {
+    dir: 'ltr', confidentiel: 'Confidentiel', confReport: 'Rapport Confidentiel',
+    title: "Rapport de Diagnostic & d'Évaluation", subtitle: "Évaluation multidimensionnelle approfondie de la maturité du projet entrepreneurial",
+    preparedFor: 'Préparé pour', preparedBy: 'Préparé par', platform: 'Plateforme Massar',
+    dateL: 'Date du rapport', version: 'Version', reference: 'Référence', classification: 'Classification',
+    restricted: 'Confidentiel — Diffusion restreinte',
+    s01: 'Synthèse', execSummary: 'Synthèse Exécutive', keyPoints: 'Points clés',
+    s02: 'Aperçu', keyMetrics: 'Indicateurs Clés',
+    scoreGlobal: 'Score Global', greenScore: 'Score Vert (UNDP)', anomaliesK: 'Anomalies Détectées', criteria: 'Critères Analysés',
+    s03: 'Analyse', breakdown: 'Détail des Scores', dimension: 'Dimension', scoreH: 'Score', statusH: 'Statut', compositeRow: 'Score composite global',
+    s04: 'Détail', detailed: 'Analyse Détaillée par Dimension',
+    s05: 'Vigilance', anomTitle: 'Anomalies & Points de Vigilance', noAnom: 'Aucune anomalie détectée',
+    envTitle: 'Score Environnemental (UNDP)', undpTotal: 'Total UNDP',
+    sain: 'Sain', modere: 'Modéré', critique: 'Critique', high: 'Haute', medium: 'Moyenne',
+    signTitle: 'Validation & Signature', authSign: 'Signature autorisée', official: 'Rapport Officiel',
+    disclaimer: "Ce rapport a été généré automatiquement par la plateforme Massar à partir du diagnostic auto-déclaré du projet et d'un modèle de scoring multidimensionnel explicable. Les conclusions sont fournies à titre indicatif et doivent être lues avec la due diligence.",
+    generatedBy: 'Généré par la plateforme Massar', pageWord: 'Page',
+  }
+
+  const dimLabel = (d) => DIM_LABELS[d] ? (isAr ? DIM_LABELS[d].ar : DIM_LABELS[d].fr) : d
+  const statusOf = (v) => v >= 70 ? { t: L.sain, c: 'ok' } : v >= 50 ? { t: L.modere, c: 'warn' } : { t: L.critique, c: 'crit' }
+  const fillClass = (v) => v >= 70 ? 'good' : v >= 50 ? '' : 'warn'
+
+  const g = scores.green
+  const flags = data.anomaly_flags || []
+  const highN = flags.filter((f) => f.severity === 'high').length
+  const medN = flags.length - highN
+  const ranked = bizDims.filter((d) => Number.isFinite(scores[d]?.composite)).sort((a, b) => scores[b].composite - scores[a].composite)
+  const haveRank = ranked.length > 0
+  const strong = ranked[0], weak = ranked[ranked.length - 1]
+  const comps = bizDims.map((d) => scores[d]?.composite).filter((v) => Number.isFinite(v))
+  const scoreGlobal = comps.length ? Math.round(comps.reduce((a, b) => a + b, 0) / comps.length) : null
+  const criteriaCount = bizDims.reduce((n, d) => n + Object.keys(scores[d]?.sub_scores || {}).length, 0) + Object.keys(g?.pillars || {}).length
+
+  // ── Executive summary ──
+  const lead = haveRank
+    ? (isAr
+        ? `يحصل المشروع «${esc(name)}» على مؤشر عام قدره <b>${scoreGlobal}/100</b>. أبرز نقطة قوة هي ${esc(dimLabel(strong))} (${Math.round(scores[strong].composite)})، في حين يمثّل ${esc(dimLabel(weak))} (${Math.round(scores[weak].composite)}) أهمّ نقطة يقظة.`
+        : `Le projet « ${esc(name)} » obtient un score global de <b>${scoreGlobal}/100</b>. Sa force principale est ${esc(dimLabel(strong))} (${Math.round(scores[strong].composite)}), tandis que ${esc(dimLabel(weak))} (${Math.round(scores[weak].composite)}) constitue le principal point de vigilance.`)
+    : (isAr ? 'النتائج التفصيلية مبيّنة أدناه.' : 'Les résultats détaillés figurent ci-dessous.')
+
+  const takeaways = haveRank ? [
+    isAr ? `أقوى محور: <b>${esc(dimLabel(strong))}</b> — ${Math.round(scores[strong].composite)}/100.` : `Dimension la plus forte : <b>${esc(dimLabel(strong))}</b> — ${Math.round(scores[strong].composite)}/100.`,
+    isAr ? `المحور الأضعف: <b>${esc(dimLabel(weak))}</b> — ${Math.round(scores[weak].composite)}/100، يُعالَج بأولوية.` : `Dimension la plus faible : <b>${esc(dimLabel(weak))}</b> — ${Math.round(scores[weak].composite)}/100, à traiter en priorité.`,
+    isAr ? `<b>${flags.length}</b> حالة خلل (${highN} حرجة، ${medN} متوسطة).` : `<b>${flags.length}</b> anomalie(s) détectée(s) — ${highN} haute(s), ${medN} moyenne(s).`,
+    g ? (isAr ? `المؤشر البيئي <b>${Math.round(g.composite)}/100</b> — ${esc(g.undp_classification)}.` : `Score environnemental <b>${Math.round(g.composite)}/100</b> — ${esc(g.undp_classification)}.`) : '',
+  ].filter(Boolean) : []
+  const takeawaysHtml = takeaways.map((t, i) => `<li><span class="idx">${i + 1}</span><span>${t}</span></li>`).join('')
+
+  // ── KPI grid ──
+  const kpis = `
+    <div class="kpi navy"><div class="kv num">${scoreGlobal ?? '—'}<small>/100</small></div><div class="kl">${L.scoreGlobal}</div></div>
+    <div class="kpi emerald"><div class="kv num">${g?.composite != null ? Math.round(g.composite) : '—'}<small>/100</small></div><div class="kl">${L.greenScore}</div><div class="kd">${esc(g?.undp_classification || '—')}</div></div>
+    <div class="kpi amber"><div class="kv num">${flags.length}</div><div class="kl">${L.anomaliesK}</div><div class="kd">${highN} ${L.high} · ${medN} ${L.medium}</div></div>
+    <div class="kpi"><div class="kv num">${criteriaCount}</div><div class="kl">${L.criteria}</div></div>`
+
+  // ── Scoring table ──
+  const tableRows = [...bizDims, 'green'].filter((d) => (d === 'green' ? g : scores[d])).map((d) => {
+    const v = d === 'green' ? g.composite : scores[d].composite
+    const st = statusOf(v)
+    const lbl = d === 'green' ? L.greenScore : dimLabel(d)
+    return `<tr>
+      <td><span class="name">${esc(lbl)}</span></td>
+      <td><span class="meter"><span class="trk"><span class="fil ${fillClass(v)}" style="width:${Math.min(100, v || 0)}%"></span></span><span class="mn num">${Number(v).toFixed(0)}</span></span></td>
+      <td class="c"><span class="pill ${st.c}">${st.t}</span></td>
+    </tr>`
+  }).join('')
+  const totalRow = scoreGlobal != null
+    ? `<tr class="total"><td><span class="name">${L.compositeRow}</span></td><td class="r">—</td><td class="c num">${scoreGlobal}</td></tr>`
+    : ''
+
+  // ── Detailed per-dimension analysis ──
+  const detailed = bizDims.filter((d) => scores[d]).map((d) => {
+    const c = scores[d].composite
+    const st = statusOf(c)
+    const just = justText(data.justifications?.[d], isAr)
+    const subs = Object.entries(scores[d].sub_scores || {}).map(([k, sub]) => {
+      const lbl = SUB_LABELS[k] ? (isAr ? SUB_LABELS[k].ar : SUB_LABELS[k].fr) : k
+      return `<tr><td>${esc(lbl)}</td><td class="v num">${Number(sub.value).toFixed(0)} <span class="wt">(${Math.round(sub.weight * 100)}%)</span></td></tr>`
+    }).join('')
+    return `<div class="dcard">
+      <div class="dh"><h3>${esc(dimLabel(d))}</h3><span class="dscore" style="color:${barColor(c)}">${c?.toFixed(1) ?? '—'}<small>/100</small></span><span class="pill ${st.c}">${st.t}</span></div>
+      ${subs ? `<table class="subt">${subs}</table>` : ''}
+      ${just ? `<p class="djust">${esc(just)}</p>` : ''}
+    </div>`
+  }).join('')
+
+  // ── Environmental pillars ──
+  const greenBlock = g ? `<div class="green-wrap">
+      <div class="gh"><h3>${L.envTitle}</h3><span class="gbadge" style="background:${UNDP_COLOR(g.undp_raw_total)}">${esc(g.undp_classification)}</span></div>
+      <div class="grow"><span class="gscore" style="color:${UNDP_COLOR(g.undp_raw_total)}">${g.composite?.toFixed(1) ?? '—'}<small>/100</small></span><span class="wt">${L.undpTotal}: ${Number(g.undp_raw_total).toFixed(1)}</span></div>
+      <div class="pillars">${Object.entries(g.pillars || {}).map(([k, p]) => {
+        const lbl = PILLAR_LABELS[k] ? (isAr ? PILLAR_LABELS[k].ar : PILLAR_LABELS[k].fr) : k
+        return `<div class="pillar"><div class="pn">${esc(lbl)}</div><div class="pv num">${Number(p.score).toFixed(1)}<small>/5</small></div></div>`
+      }).join('')}</div>
+    </div>` : ''
+
+  // ── Anomalies ──
+  const anomList = flags.length
+    ? flags.map((f) => {
+        const hi = f.severity === 'high'
+        const msg = ANOMALY_MESSAGES[f.code] ? (isAr ? ANOMALY_MESSAGES[f.code].ar : ANOMALY_MESSAGES[f.code].fr) : (f.message || f.code)
+        return `<div class="an ${hi ? 'hi' : 'me'}"><span class="sev" style="background:${hi ? '#C0392B' : '#E07A1F'}">${hi ? L.high : L.medium}</span><span>${esc(msg)}</span></div>`
+      }).join('')
+    : `<p class="ok">✓ ${L.noAnom}</p>`
+
+  return `<!DOCTYPE html><html dir="${L.dir}" lang="${isAr ? 'ar' : 'fr'}"><head><meta charset="utf-8"><title>${L.confReport} — Massar</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+:root{--navy:#081F5C;--indigo:#3346AC;--emerald:#3DA35D;--ink:#1A202C;--slate:#2D3748;--muted:#64748B;--soft:#7096D1;--line:#E2E8F0;--bg:#F7F9FC;--bgi:#EEF1FF;--amber:#E07A1F;--red:#C0392B;--sans:'Inter','Segoe UI',sans-serif;--disp:'Sora','Inter',sans-serif}
+*{margin:0;padding:0;box-sizing:border-box}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{font-family:var(--sans);color:var(--ink);font-size:10pt;line-height:1.55;background:#fff}
+h1,h2,h3,h4{font-family:var(--disp);color:var(--navy);font-weight:700;letter-spacing:-.01em}
+.num{font-variant-numeric:tabular-nums}b{font-weight:700;color:var(--navy)}
+@page{size:A4;margin:18mm 16mm;@bottom-right{content:"${L.pageWord} " counter(page) " / " counter(pages);font:600 8pt 'Inter',sans-serif;color:#64748B}@bottom-left{content:"${L.confidentiel} · Massar";font:400 8pt 'Inter',sans-serif;color:#94A3B8}}
+@page:first{margin:0;@bottom-right{content:none}@bottom-left{content:none}}
+/* Cover */
+.cover{position:relative;height:297mm;padding:32mm 26mm;display:flex;flex-direction:column;overflow:hidden;break-after:page}
+.c-accent{position:absolute;top:0;${isAr ? 'right' : 'left'}:0;width:13mm;height:100%;background:var(--navy)}
+.c-accent::after{content:"";position:absolute;top:0;${isAr ? 'right' : 'left'}:13mm;width:3mm;height:100%;background:var(--emerald)}
+.c-top{display:flex;align-items:center;gap:12px;margin-${isAr ? 'right' : 'left'}:8mm}
+.c-logo{height:34px;width:auto}
+.c-word{font-family:var(--disp);font-weight:800;font-size:15pt;letter-spacing:3px;color:var(--navy)}
+.c-geo{display:flex;gap:5px;margin:26mm 0 0 0;padding-${isAr ? 'right' : 'left'}:8mm}
+.c-geo i{display:block;width:34px;height:5px;border-radius:3px}
+.c-geo i:nth-child(1){background:var(--navy)}.c-geo i:nth-child(2){background:var(--indigo)}.c-geo i:nth-child(3){background:var(--emerald)}
+.c-eyebrow{margin:9mm 0 5mm 0;padding-${isAr ? 'right' : 'left'}:8mm;font-size:9.5pt;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:var(--emerald)}
+.c-title{padding-${isAr ? 'right' : 'left'}:8mm;font-family:var(--disp);font-weight:800;font-size:38pt;line-height:1.06;color:var(--navy);max-width:150mm}
+.c-sub{margin-top:7mm;padding-${isAr ? 'right' : 'left'}:8mm;font-size:12.5pt;color:var(--slate);max-width:145mm;line-height:1.5}
+.c-spacer{flex:1}
+.c-class{margin:0 0 9mm 0;padding-${isAr ? 'right' : 'left'}:8mm;display:flex;align-items:center;gap:7px;font-size:8.5pt;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--red)}
+.c-class i{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.c-meta{padding-${isAr ? 'right' : 'left'}:8mm;display:grid;grid-template-columns:1fr 1fr;gap:7mm 14mm;max-width:150mm;border-top:1.5pt solid var(--line);padding-top:8mm}
+.c-meta dt{font-size:8pt;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.c-meta dd{font-size:11pt;font-weight:600;color:var(--ink)}
+/* Sections */
+.content{padding-top:2mm}
+.sec{margin-top:10mm;break-inside:avoid}
+.eyebrow{font-size:8.5pt;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:var(--emerald);margin-bottom:5px}
+.sec h2{font-size:16pt;line-height:1.2;margin-bottom:3mm;padding-bottom:3mm;position:relative}
+.sec h2::after{content:"";position:absolute;${isAr ? 'right' : 'left'}:0;bottom:0;width:46px;height:3px;border-radius:2px;background:var(--indigo)}
+.lead{font-size:10.5pt;color:var(--slate);max-width:168mm}
+/* Callout */
+.callout{break-inside:avoid;background:var(--bg);border:1pt solid var(--line);border-${isAr ? 'right' : 'left'}:4pt solid var(--emerald);border-radius:10px;padding:6mm 7mm;margin-top:5mm}
+.callout h3{font-size:11.5pt;margin-bottom:3mm;display:flex;align-items:center;gap:9px}
+.cdot{width:9px;height:9px;border-radius:50%;background:var(--emerald)}
+.takeaways{list-style:none;margin-top:3mm;display:grid;gap:3mm}
+.takeaways li{display:flex;gap:10px;align-items:flex-start;font-size:9.6pt;color:var(--ink)}
+.takeaways .idx{flex:none;width:18px;height:18px;border-radius:5px;background:var(--bgi);color:var(--indigo);font-weight:800;font-size:8pt;display:flex;align-items:center;justify-content:center;margin-top:1px}
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:4mm;margin-top:5mm}
+.kpi{break-inside:avoid;border:1pt solid var(--line);border-radius:10px;padding:6mm 5mm 5mm;position:relative;overflow:hidden}
+.kpi::before{content:"";position:absolute;top:0;${isAr ? 'right' : 'left'}:0;width:100%;height:3px;background:var(--indigo)}
+.kpi.emerald::before{background:var(--emerald)}.kpi.amber::before{background:var(--amber)}.kpi.navy::before{background:var(--navy)}
+.kv{font-family:var(--disp);font-weight:800;font-size:25pt;line-height:1;color:var(--navy);letter-spacing:-1px}
+.kv small{font-size:11pt;font-weight:600;color:var(--muted);letter-spacing:0}
+.kpi.emerald .kv{color:var(--emerald)}.kpi.amber .kv{color:var(--amber)}
+.kl{margin-top:4mm;font-size:7.5pt;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:var(--muted)}
+.kd{margin-top:2mm;font-size:8pt;font-weight:600;color:var(--slate)}
+/* Table */
+.twrap{break-inside:avoid;margin-top:5mm;border:1pt solid var(--line);border-radius:10px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:9.3pt}
+thead th{background:var(--navy);color:#fff;font-family:var(--sans);font-weight:600;font-size:8pt;letter-spacing:.6px;text-transform:uppercase;text-align:${isAr ? 'right' : 'left'};padding:3.6mm 5mm}
+thead th.c{text-align:center}
+tbody td{padding:3.2mm 5mm;border-bottom:.6pt solid var(--line);color:var(--slate);vertical-align:middle}
+tbody tr:nth-child(even){background:var(--bg)}tbody tr:last-child td{border-bottom:none}
+td.c{text-align:center}td.r{text-align:${isAr ? 'left' : 'right'}}
+td .name{font-weight:700;color:var(--navy)}
+tr.total{background:var(--bgi)}tr.total td{font-weight:800;color:var(--navy);border-top:1pt solid var(--indigo)}
+.meter{display:inline-flex;align-items:center;gap:8px;width:100%}
+.trk{flex:1;height:6px;border-radius:4px;background:var(--line);overflow:hidden;min-width:55px}
+.fil{height:100%;border-radius:4px;background:var(--indigo)}.fil.good{background:var(--emerald)}.fil.warn{background:var(--amber)}
+.mn{width:26px;text-align:${isAr ? 'left' : 'right'};font-weight:700;color:var(--ink);font-size:9pt}
+.pill{display:inline-block;font-size:7.5pt;font-weight:700;letter-spacing:.4px;padding:2.5px 9px;border-radius:20px;text-transform:uppercase}
+.pill.ok{background:#EAF7EF;color:#2d7a45}.pill.warn{background:#FEF3E2;color:#b9651a}.pill.crit{background:#FBEAE8;color:#a02d23}
+/* Detailed cards */
+.dcard{break-inside:avoid;border:1pt solid var(--line);border-radius:10px;padding:5mm 6mm;margin-top:4mm}
+.dh{display:flex;align-items:center;gap:10px;margin-bottom:2mm}
+.dh h3{font-size:12pt;flex:1}
+.dscore{font-family:var(--disp);font-weight:800;font-size:16pt}.dscore small{font-size:9pt;color:var(--muted);font-weight:600}
+.subt{margin-top:2mm}.subt td{padding:2.4mm 0;border-bottom:.5pt solid var(--line);color:var(--slate)}
+.subt td.v{text-align:${isAr ? 'left' : 'right'};color:var(--ink);font-weight:600}
+.wt{color:var(--muted);font-weight:400}
+.djust{font-size:9.3pt;color:var(--slate);margin-top:3mm;padding-top:3mm;border-top:1pt solid var(--line);line-height:1.55}
+/* Green */
+.green-wrap{break-inside:avoid;margin-top:5mm;background:#F4FBF6;border:1pt solid rgba(61,163,93,.28);border-radius:10px;padding:6mm 7mm}
+.gh{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:3mm}.gh h3{font-size:12pt}
+.gbadge{color:#fff;font-size:8pt;font-weight:700;padding:3px 11px;border-radius:20px}
+.grow{display:flex;align-items:baseline;gap:10px;margin-bottom:4mm}
+.gscore{font-family:var(--disp);font-weight:800;font-size:20pt}.gscore small{font-size:10pt;color:var(--muted);font-weight:600}
+.pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm}
+.pillar{background:#fff;border:1pt solid rgba(61,163,93,.2);border-radius:8px;padding:3.5mm;text-align:center}
+.pn{font-size:7.6pt;color:var(--muted);margin-bottom:2mm;min-height:6mm}
+.pv{font-family:var(--disp);font-weight:800;font-size:13pt;color:var(--navy)}.pv small{font-size:8pt;color:var(--muted);font-weight:600}
+/* Anomalies */
+.an{display:flex;gap:10px;align-items:flex-start;padding:10px 13px;border-radius:9px;margin-top:3mm;font-size:9.4pt;break-inside:avoid}
+.an.hi{background:#FFF5F5;border:1px solid rgba(192,57,43,.2)}.an.me{background:#FFF9EE;border:1px solid rgba(224,122,31,.22)}
+.sev{color:#fff;font-size:7.5pt;font-weight:700;padding:2.5px 9px;border-radius:20px;white-space:nowrap;text-transform:uppercase}
+.ok{color:var(--emerald);font-weight:700;font-size:10pt;margin-top:3mm}
+.summary{margin-top:4mm;font-size:9pt;color:var(--slate);font-style:italic}
+/* Signature */
+.signoff{margin-top:11mm;padding-top:7mm;border-top:1.5pt solid var(--line);display:flex;justify-content:space-between;gap:14mm;align-items:flex-start;break-inside:avoid}
+.so-note{flex:1}.so-note h4{font-size:12pt;margin-bottom:3mm}.so-note p{font-size:9pt;color:var(--slate);max-width:118mm;line-height:1.55}
+.sigline{margin-top:11mm;max-width:72mm}
+.sigline span{display:block;border-top:1pt solid var(--slate);width:100%;margin-bottom:4px}
+.sigline label{font-size:8pt;color:var(--muted);font-weight:600}
+.stamp{display:flex;flex-direction:column;align-items:center;gap:5px;flex:none}
+.stamp-ring{width:33mm;height:33mm;border-radius:50%;border:2.4pt solid var(--navy);display:flex;align-items:center;justify-content:center;transform:rotate(-7deg);position:relative}
+.stamp-ring::after{content:"";position:absolute;inset:2.6mm;border-radius:50%;border:1pt solid var(--navy)}
+.stamp-in{text-align:center;line-height:1.25}
+.stamp-brand{font-family:var(--disp);font-weight:800;font-size:13pt;letter-spacing:2px;color:var(--navy)}
+.stamp-sub{font-size:6pt;font-weight:700;letter-spacing:1.4px;color:var(--emerald);text-transform:uppercase}
+.stamp-date{font-size:6pt;color:var(--muted);margin-top:2px}
+.stamp-ref{font-size:7.5pt;font-weight:600;color:var(--muted)}
+.docfoot{margin-top:9mm;padding-top:5mm;border-top:1pt solid var(--line);font-size:8pt;color:var(--muted);text-align:center}
+@media screen{body{background:#eef1f6;padding:22px 0}.cover,.content{width:210mm;background:#fff;box-shadow:0 12px 40px rgba(8,31,92,.14);margin:0 auto}.cover{margin-bottom:22px}.content{padding:18mm 16mm;margin-bottom:22px}}
+</style></head>
+<body>
+  <section class="cover">
+    <div class="c-accent"></div>
+    <div class="c-top"><img class="c-logo" src="${logo}" alt="Massar" onerror="this.style.display='none'"/><span class="c-word">MASSAR</span></div>
+    <div class="c-geo"><i></i><i></i><i></i></div>
+    <div class="c-eyebrow">${L.confReport}</div>
+    <h1 class="c-title">${esc(L.title)}</h1>
+    <p class="c-sub">${esc(L.subtitle)}</p>
+    <div class="c-spacer"></div>
+    <div class="c-class"><i></i>${L.restricted}</div>
+    <dl class="c-meta">
+      <div><dt>${L.preparedFor}</dt><dd>${esc(name)}</dd></div>
+      <div><dt>${L.preparedBy}</dt><dd>${L.platform}</dd></div>
+      <div><dt>${L.dateL}</dt><dd>${date}</dd></div>
+      <div><dt>${L.version}</dt><dd>1.0</dd></div>
+      <div><dt>${L.reference}</dt><dd>${ref}</dd></div>
+      <div><dt>${L.classification}</dt><dd>${L.confidentiel}</dd></div>
+    </dl>
+  </section>
+
+  <main class="content">
+    <section class="sec">
+      <div class="eyebrow">01 · ${L.s01}</div>
+      <h2>${L.execSummary}</h2>
+      <p class="lead">${lead}</p>
+      ${takeawaysHtml ? `<div class="callout"><h3><span class="cdot"></span>${L.keyPoints}</h3><ul class="takeaways">${takeawaysHtml}</ul></div>` : ''}
+    </section>
+
+    <section class="sec">
+      <div class="eyebrow">02 · ${L.s02}</div>
+      <h2>${L.keyMetrics}</h2>
+      <div class="kpis">${kpis}</div>
+    </section>
+
+    <section class="sec">
+      <div class="eyebrow">03 · ${L.s03}</div>
+      <h2>${L.breakdown}</h2>
+      <div class="twrap"><table><thead><tr><th>${L.dimension}</th><th>${L.scoreH}</th><th class="c">${L.statusH}</th></tr></thead><tbody>${tableRows}${totalRow}</tbody></table></div>
+      ${greenBlock}
+    </section>
+
+    <section class="sec">
+      <div class="eyebrow">04 · ${L.s04}</div>
+      <h2>${L.detailed}</h2>
+      ${detailed}
+    </section>
+
+    <section class="sec">
+      <div class="eyebrow">05 · ${L.s05}</div>
+      <h2>${L.anomTitle}</h2>
+      ${anomList}
+      ${data.anomaly_summary ? `<p class="summary">${esc(data.anomaly_summary)}</p>` : ''}
+    </section>
+
+    <section class="signoff">
+      <div class="so-note">
+        <h4>${L.signTitle}</h4>
+        <p>${esc(L.disclaimer)}</p>
+        <div class="sigline"><span></span><label>${L.authSign}</label></div>
+      </div>
+      <div class="stamp">
+        <div class="stamp-ring"><div class="stamp-in"><div class="stamp-brand">MASSAR</div><div class="stamp-sub">${L.official}</div><div class="stamp-date">${date}</div></div></div>
+        <div class="stamp-ref">${L.reference}: ${ref}</div>
+      </div>
+    </section>
+
+    <div class="docfoot">${L.generatedBy} · ${ref} · ${date}</div>
+  </main>
+  <script>window.onload=function(){setTimeout(function(){window.print()},500)}<\/script>
+</body></html>`
+}
+
 function DimensionCard({ dim, data, justification, isAr }) {
   const [open, setOpen] = useState(false)
   if (!data) return null
@@ -331,6 +657,29 @@ export default function DashboardPage() {
     }
   }
 
+  const handleDownloadReport = () => {
+    if (!data) return
+    const html = buildReportHtml(data, profile?.name, isAr)
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.open()
+      w.document.write(html) // embedded onload triggers the print/save-as-PDF dialog
+      w.document.close()
+      w.focus()
+      return
+    }
+    // popup blocked → download the report as a standalone HTML file instead
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `rapport-massar-${new Date().toISOString().slice(0, 10)}.html`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 4000)
+  }
+
   const anomalies = data?.anomaly_flags || []
 
   if (profileLoading || loading) {
@@ -474,8 +823,8 @@ export default function DashboardPage() {
               </button>
 
               <button
-                onClick={() => console.log('Téléchargement du rapport PDF — fonctionnalité à venir')}
-                className="flex items-center gap-2 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm"
+                onClick={handleDownloadReport}
+                className="flex items-center gap-2 font-semibold px-5 py-2.5 rounded-xl transition-colors text-sm hover:bg-blue-50"
                 style={{ ...INTER, border: '1.5px solid #7096D1', color: '#7096D1' }}
               >
                 <Download size={16} />
